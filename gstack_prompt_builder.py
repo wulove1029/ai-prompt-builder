@@ -51,7 +51,7 @@ def _read_gstack_version() -> str:
 GSTACK_VERSION = _read_gstack_version()
 
 APP_VERSION = "0.1.0"
-UPDATE_REPO = os.environ.get("AI_PROMPT_BUILDER_UPDATE_REPO", "YOUR_GITHUB_USERNAME/ai-prompt-builder")
+UPDATE_REPO = os.environ.get("AI_PROMPT_BUILDER_UPDATE_REPO", "wulove1029/ai-prompt-builder")
 UPDATE_ASSET_NAME = "AI Prompt Builder.exe"
 
 # ─────────────────────────────────────────────

@@ -31,14 +31,14 @@ The GitHub Actions release workflow automatically patches the built EXE to use t
 For local testing, you can override the update source with an environment variable:
 
 ```powershell
-$env:AI_PROMPT_BUILDER_UPDATE_REPO = "your-github-name/ai-prompt-builder"
+$env:AI_PROMPT_BUILDER_UPDATE_REPO = "wulove1029/ai-prompt-builder"
 python gstack_prompt_builder.py
 ```
 
 The source fallback lives here in `gstack_prompt_builder.py`:
 
 ```python
-UPDATE_REPO = os.environ.get("AI_PROMPT_BUILDER_UPDATE_REPO", "YOUR_GITHUB_USERNAME/ai-prompt-builder")
+UPDATE_REPO = os.environ.get("AI_PROMPT_BUILDER_UPDATE_REPO", "wulove1029/ai-prompt-builder")
 ```
 
 Release tags should use semantic versions, for example:
@@ -64,7 +64,7 @@ git init
 git add .
 git commit -m "initial release"
 git branch -M main
-git remote add origin https://github.com/YOUR_GITHUB_USERNAME/ai-prompt-builder.git
+git remote add origin https://github.com/wulove1029/ai-prompt-builder.git
 git push -u origin main
 git tag v0.1.0
 git push origin v0.1.0
