@@ -50,7 +50,7 @@ def _read_gstack_version() -> str:
 
 GSTACK_VERSION = _read_gstack_version()
 
-APP_VERSION = "0.1.0"
+APP_VERSION = "0.1.1"
 UPDATE_REPO = os.environ.get("AI_PROMPT_BUILDER_UPDATE_REPO", "wulove1029/ai-prompt-builder")
 UPDATE_ASSET_NAME = "AI Prompt Builder.exe"
 
@@ -3736,11 +3736,13 @@ class GStackPromptBuilder(QMainWindow):
                 color: {t['text_muted']};
                 border: 1px solid {t['border']};
                 border-radius: 6px;
-                padding: 4px 10px;
+                padding: 0px;
                 font-size: 14px;
                 font-weight: normal;
-                min-width: 32px;
-                min-height: 28px;
+                min-width: 38px;
+                max-width: 38px;
+                min-height: 30px;
+                max-height: 30px;
             }}
             QPushButton#theme_btn:hover {{
                 background-color: {t['bg_surface2']};
@@ -3836,6 +3838,7 @@ class GStackPromptBuilder(QMainWindow):
         header.setFixedHeight(52)
         layout = QHBoxLayout(header)
         layout.setContentsMargins(20, 0, 20, 0)
+        layout.setSpacing(8)
 
         title = QLabel("AI Prompt Builder")
         title.setStyleSheet("font-size: 16px; font-weight: bold;")
@@ -3854,26 +3857,37 @@ class GStackPromptBuilder(QMainWindow):
 
         layout.addStretch()
 
+        right_controls = QWidget()
+        right_controls.setFixedHeight(32)
+        right_layout = QHBoxLayout(right_controls)
+        right_layout.setContentsMargins(0, 0, 0, 0)
+        right_layout.setSpacing(8)
+        right_layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+
         hint = QLabel("填好欄位 → 右側 preview → 複製")
         hint.setStyleSheet("font-size: 12px;")
+        hint.setAlignment(Qt.AlignmentFlag.AlignVCenter)
         self._hint_label = hint
-        layout.addWidget(hint)
+        right_layout.addWidget(hint)
 
         update_btn = QPushButton("檢查更新")
         update_btn.setObjectName("secondary_btn")
         update_btn.setToolTip("檢查 GitHub Releases 是否有新版 AI Prompt Builder")
+        update_btn.setFixedSize(104, 32)
         update_btn.clicked.connect(lambda: self._check_app_updates(silent=False))
         self._app_update_btn = update_btn
-        layout.addWidget(update_btn)
+        right_layout.addWidget(update_btn)
 
         # 主題切換按鈕
         theme_btn = QPushButton(self._theme["toggle_icon"])
         theme_btn.setObjectName("theme_btn")
         theme_btn.setToolTip(self._theme["toggle_tip"])
-        theme_btn.setFixedSize(36, 28)
+        theme_btn.setFixedSize(40, 32)
         theme_btn.clicked.connect(self._toggle_theme)
         self._theme_btn = theme_btn
-        layout.addWidget(theme_btn)
+        right_layout.addWidget(theme_btn)
+
+        layout.addWidget(right_controls, 0, Qt.AlignmentFlag.AlignVCenter)
 
         return header
 
