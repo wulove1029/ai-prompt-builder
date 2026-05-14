@@ -50,7 +50,7 @@ def _read_gstack_version() -> str:
 
 GSTACK_VERSION = _read_gstack_version()
 
-APP_VERSION = "0.1.1"
+APP_VERSION = "0.1.2"
 UPDATE_REPO = os.environ.get("AI_PROMPT_BUILDER_UPDATE_REPO", "wulove1029/ai-prompt-builder")
 UPDATE_ASSET_NAME = "AI Prompt Builder.exe"
 
@@ -3724,6 +3724,23 @@ class GStackPromptBuilder(QMainWindow):
                 background-color: {t['border']};
                 border-color: {t['accent_blue']};
             }}
+            QPushButton#app_update_btn {{
+                background-color: {t['bg_surface2']};
+                color: {t['text_main']};
+                border: 1px solid {t['border']};
+                border-radius: 8px;
+                padding: 0px;
+                font-size: 13px;
+                font-weight: bold;
+                min-width: 102px;
+                max-width: 102px;
+                min-height: 30px;
+                max-height: 30px;
+            }}
+            QPushButton#app_update_btn:hover {{
+                background-color: {t['border']};
+                border-color: {t['accent_blue']};
+            }}
             QPushButton#copy_btn {{
                 background-color: {t['accent_green']};
                 color: {t['on_accent']};
@@ -3871,9 +3888,9 @@ class GStackPromptBuilder(QMainWindow):
         right_layout.addWidget(hint)
 
         update_btn = QPushButton("檢查更新")
-        update_btn.setObjectName("secondary_btn")
+        update_btn.setObjectName("app_update_btn")
         update_btn.setToolTip("檢查 GitHub Releases 是否有新版 AI Prompt Builder")
-        update_btn.setFixedSize(104, 32)
+        update_btn.setFixedSize(102, 30)
         update_btn.clicked.connect(lambda: self._check_app_updates(silent=False))
         self._app_update_btn = update_btn
         right_layout.addWidget(update_btn)
@@ -4242,18 +4259,51 @@ class GStackPromptBuilder(QMainWindow):
 
         script_path = tmp_dir / "install-ai-prompt-builder-update.ps1"
         relaunch = str(target)
+        backup = str(target.with_suffix(target.suffix + ".bak"))
         script = f"""
 $ErrorActionPreference = 'Stop'
 $pidToWait = {os.getpid()}
 $source = {json.dumps(str(download_path))}
 $target = {json.dumps(str(target))}
+$backup = {json.dumps(backup)}
 try {{
-  Wait-Process -Id $pidToWait -Timeout 30
+  Wait-Process -Id $pidToWait -Timeout 60
 }} catch {{
-  Start-Sleep -Seconds 2
+  Start-Sleep -Seconds 5
 }}
-Copy-Item -LiteralPath $source -Destination $target -Force
-Start-Process -FilePath {json.dumps(relaunch)}
+Start-Sleep -Seconds 2
+$sourceSize = (Get-Item -LiteralPath $source).Length
+if ($sourceSize -lt 1048576) {{
+  throw "Downloaded update is too small: $sourceSize bytes"
+}}
+if (Test-Path -LiteralPath $backup) {{
+  Remove-Item -LiteralPath $backup -Force -ErrorAction SilentlyContinue
+}}
+if (Test-Path -LiteralPath $target) {{
+  Copy-Item -LiteralPath $target -Destination $backup -Force
+}}
+$copied = $false
+for ($i = 0; $i -lt 20; $i++) {{
+  try {{
+    Copy-Item -LiteralPath $source -Destination $target -Force
+    $targetSize = (Get-Item -LiteralPath $target).Length
+    if ($targetSize -eq $sourceSize) {{
+      $copied = $true
+      break
+    }}
+  }} catch {{
+    Start-Sleep -Milliseconds 500
+  }}
+  Start-Sleep -Milliseconds 500
+}}
+if (-not $copied) {{
+  if (Test-Path -LiteralPath $backup) {{
+    Copy-Item -LiteralPath $backup -Destination $target -Force
+  }}
+  throw "Could not replace application executable"
+}}
+Start-Sleep -Seconds 2
+Start-Process -FilePath {json.dumps(relaunch)} -WorkingDirectory {json.dumps(str(target.parent))}
 Remove-Item -LiteralPath $source -Force -ErrorAction SilentlyContinue
 Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue
 """
