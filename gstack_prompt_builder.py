@@ -16,7 +16,7 @@ import urllib.request
 from pathlib import Path
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,
-    QLabel, QComboBox, QLineEdit, QTextEdit, QPushButton, QSplitter,
+    QGridLayout, QLabel, QComboBox, QLineEdit, QTextEdit, QPushButton, QSplitter,
     QGroupBox, QScrollArea, QFrame, QSizePolicy, QMessageBox
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QThread
@@ -27,8 +27,11 @@ from PyQt6.QtGui import QFont, QClipboard, QPalette, QColor, QIcon, QPixmap
 # ─────────────────────────────────────────────
 def _find_gstack_root() -> Path | None:
     candidates = [
+        Path.home() / ".codex" / "skills" / "gstack",
+        Path.home() / ".agents" / "skills" / "gstack",
         Path.home() / ".claude" / "skills" / "gstack",
         Path.home() / ".gstack" / "repos" / "gstack",
+        Path.cwd() / ".agents" / "skills" / "gstack",
     ]
     for p in candidates:
         if (p / "VERSION").is_file():
@@ -50,7 +53,7 @@ def _read_gstack_version() -> str:
 
 GSTACK_VERSION = _read_gstack_version()
 
-APP_VERSION = "0.1.2"
+APP_VERSION = "0.1.3"
 UPDATE_REPO = os.environ.get("AI_PROMPT_BUILDER_UPDATE_REPO", "wulove1029/ai-prompt-builder")
 UPDATE_ASSET_NAME = "AI Prompt Builder.exe"
 
@@ -1690,6 +1693,98 @@ SKILLS = {
             "測試：執行一個安全的 git 指令（`git status`、`git log`），確認不受影響。"
         ),
     },
+    "/prototype": {
+        "role": "原型工程師",
+        "desc": "先做可丟棄原型來釐清設計，再決定正式實作方向",
+        "when": "需求或互動還不確定，需要用小型可跑原型驗證狀態、流程或 UI 方案時",
+        "template": (
+            "專案：{project}　分支：{branch}\n\n"
+            "原型問題：{task}\n\n"
+            "{extra_instructions}"
+            "請使用 Matt Pocock `/prototype` skill。\n\n"
+            "請先判斷原型類型：\n"
+            "1. 終端機 / 狀態機原型：用來驗證 business logic、資料流、狀態轉移。\n"
+            "2. UI 變體原型：用來比較多個互動或畫面方案。\n\n"
+            "規則：原型是 throwaway，不要把它混進正式架構；結束後輸出學到什麼、建議採用哪個方向、正式實作前還缺哪些決策。"
+        ),
+    },
+    "/handoff": {
+        "role": "交接文件整理員",
+        "desc": "把目前對話與工作狀態壓縮成交接文件，讓下一個 agent 能接手",
+        "when": "準備結束 session、切換 agent、或需要把上下文整理成可接手文件時",
+        "template": (
+            "專案：{project}　分支：{branch}\n\n"
+            "交接焦點：{task}\n\n"
+            "{extra_instructions}"
+            "請使用 Matt Pocock `/handoff` skill 產出精簡但可執行的 handoff。\n\n"
+            "內容必須包含：目前目標、已完成事項、未完成事項、關鍵檔案、重要決策、驗證結果、已知風險、下一步建議。\n"
+            "不要把整段對話流水帳搬過去，只保留下一位執行者真正需要的資訊。"
+        ),
+    },
+    "/edit-article": {
+        "role": "文章編輯",
+        "desc": "重整文章結構、提升清晰度、收緊語氣與論證",
+        "when": "要修改、潤飾、重組 markdown 文章或草稿時",
+        "template": (
+            "專案：{project}　分支：{branch}\n\n"
+            "文章路徑 / 編輯目標：{task}\n\n"
+            "{extra_instructions}"
+            "請使用 Matt Pocock `/edit-article` skill。\n\n"
+            "先讀文章，判斷核心主張、目標讀者與目前結構問題；再提出修改方向。\n"
+            "編輯時優先改善段落順序、標題、論證銜接與刪除冗詞；保留作者原本的技術判斷與語氣特色。"
+        ),
+    },
+    "/obsidian-vault": {
+        "role": "Obsidian 知識庫助手",
+        "desc": "搜尋、建立與整理 Obsidian 筆記，維護 wikilinks 與 index notes",
+        "when": "要在 Obsidian vault 找資料、建立筆記、整理索引或補 wikilinks 時",
+        "template": (
+            "專案：{project}　分支：{branch}\n\n"
+            "知識庫任務：{task}\n\n"
+            "{extra_instructions}"
+            "請使用 Matt Pocock `/obsidian-vault` skill。\n\n"
+            "先確認 vault 位置與目標筆記；搜尋既有內容避免重複建立。\n"
+            "新增或修改筆記時，使用清楚標題、backlinks/wikilinks、必要的 index 更新，並回報改了哪些筆記。"
+        ),
+    },
+    "/writing-fragments": {
+        "role": "寫作素材採集員",
+        "desc": "透過追問收集零散想法、句子、主張與例子，追加到素材文件",
+        "when": "還不是要寫成文，而是要先把想法與素材挖出來保存時",
+        "template": (
+            "專案：{project}　分支：{branch}\n\n"
+            "素材主題 / 文件：{task}\n\n"
+            "{extra_instructions}"
+            "請使用 Matt Pocock `/writing-fragments` skill。\n\n"
+            "用追問收集 heterogeneous fragments：主張、例子、反例、金句、半成形想法。\n"
+            "每次只問能產生新素材的問題，並把新增素材整理到指定文件或回報可貼上的 markdown。"
+        ),
+    },
+    "/writing-shape": {
+        "role": "文章塑形編輯",
+        "desc": "把素材文件塑形成文章，逐步決定開頭、結構、段落與格式",
+        "when": "已有 raw material，需要透過對話把它整理成可讀文章時",
+        "template": (
+            "專案：{project}　分支：{branch}\n\n"
+            "素材文件 / 文章方向：{task}\n\n"
+            "{extra_instructions}"
+            "請使用 Matt Pocock `/writing-shape` skill。\n\n"
+            "先讀素材並提出 2-3 個可能文章角度；讓使用者選擇後，再逐段塑形。\n"
+            "每一步都說明結構取捨，避免一次產出整篇而失去方向控制。"
+        ),
+    },
+    "/writing-beats": {
+        "role": "文章節拍設計師",
+        "desc": "把文章當成一連串 beats，讓使用者逐步選擇下一個轉向",
+        "when": "想用 choose-your-own-adventure 方式逐段發展文章時",
+        "template": (
+            "專案：{project}　分支：{branch}\n\n"
+            "文章素材 / 起始 beat：{task}\n\n"
+            "{extra_instructions}"
+            "請使用 Matt Pocock `/writing-beats` skill。\n\n"
+            "先整理可用 beats，請使用者選起點；每次只寫一個 beat，然後提供下一步可轉向的 2-4 個選項。"
+        ),
+    },
     # ── 設計 ────────────────────────────
     "── 設計 ──": None,
     "/design-consultation": {
@@ -1904,6 +1999,71 @@ SKILLS = {
             "- 說明為什麼這樣修能解決根因（不只是「改了什麼」）\n"
             "- 修復後補上 regression test，確保問題不再復發\n"
             "- 確認修復沒有引入新的問題"
+        ),
+    },
+    "/ios-qa": {
+        "role": "iOS QA 工程師",
+        "desc": "在真實 iOS 裝置或 simulator 上做 SwiftUI app QA，收集截圖、log 與可重現 bug",
+        "when": "要驗證 iOS app 的互動、版面、錯誤狀態或裝置端行為時",
+        "template": (
+            "專案：{project}　分支：{branch}\n\n"
+            "iOS QA 目標：{task}\n\n"
+            "{extra_instructions}"
+            "請執行 gstack `/ios-qa`。\n\n"
+            "先確認 app target、裝置或 simulator、測試路徑與 build 狀態；接著用可觀察方式執行 QA。\n"
+            "回報每個問題的重現步驟、裝置資訊、截圖或 log、嚴重度、建議修復方向。"
+        ),
+    },
+    "/ios-fix": {
+        "role": "iOS 修復工程師",
+        "desc": "針對 iOS / SwiftUI bug 做根因分析、最小修復與驗證",
+        "when": "iOS app 有明確 bug、崩潰、版面或互動問題，需要自動修復時",
+        "template": (
+            "專案：{project}　分支：{branch}\n\n"
+            "iOS 問題：{task}\n\n"
+            "{extra_instructions}"
+            "請執行 gstack `/ios-fix`。\n\n"
+            "先重現問題並確認 root cause，再做最小修改；不要順手重構相鄰 SwiftUI 結構。\n"
+            "完成後跑對應 build / test / simulator 驗證，回報修改檔案、原因與剩餘風險。"
+        ),
+    },
+    "/ios-design-review": {
+        "role": "iOS 視覺審查員",
+        "desc": "在實機或 simulator 上審查 iOS app 視覺品質、SwiftUI 版面與互動細節",
+        "when": "iOS UI 已可跑，需要檢查 spacing、hierarchy、states、dark mode 或 Dynamic Type 時",
+        "template": (
+            "專案：{project}　分支：{branch}\n\n"
+            "審查畫面 / 流程：{task}\n\n"
+            "{extra_instructions}"
+            "請執行 gstack `/ios-design-review`。\n\n"
+            "使用實際截圖或 simulator 畫面作為依據，檢查資訊層級、間距、對齊、可讀性、狀態設計、Apple platform 慣例。\n"
+            "輸出具體問題清單與修復建議；若使用者要求修復，再做小範圍修改並重新截圖驗證。"
+        ),
+    },
+    "/ios-clean": {
+        "role": "iOS DebugBridge 清理員",
+        "desc": "移除 iOS DebugBridge SPM package 與所有 debug-only wiring",
+        "when": "要把 iOS app 從 debug bridge / 測試橋接狀態清回乾淨專案時",
+        "template": (
+            "專案：{project}　分支：{branch}\n\n"
+            "清理範圍：{task}\n\n"
+            "{extra_instructions}"
+            "請執行 gstack `/ios-clean`。\n\n"
+            "找出 DebugBridge package、`#if DEBUG` wiring、scheme 或 build setting 相關設定。\n"
+            "移除時保持 production 行為不變；完成後跑 iOS build，回報刪除內容與驗證結果。"
+        ),
+    },
+    "/ios-sync": {
+        "role": "iOS DebugBridge 同步員",
+        "desc": "依最新 gstack template 重新產生 iOS debug bridge 並同步專案 wiring",
+        "when": "gstack iOS debug bridge 更新後，需要讓本專案跟上最新模板時",
+        "template": (
+            "專案：{project}　分支：{branch}\n\n"
+            "同步需求：{task}\n\n"
+            "{extra_instructions}"
+            "請執行 gstack `/ios-sync`。\n\n"
+            "先檢查目前 bridge 版本與專案 wiring，再依最新模板同步。\n"
+            "同步後確認 build 通過、debug entry points 可用，並列出任何需要人工確認的 Xcode 設定。"
         ),
     },
     "/codex": {
@@ -2294,6 +2454,20 @@ SKILLS = {
             "- 更新了哪些文件，每個改了什麼\n"
             "- 哪些文件可能有問題但超出這次範圍，標記出來\n"
             "- 有沒有發現文件完全缺失的部分（建議新增）"
+        ),
+    },
+    "/document-generate": {
+        "role": "文件生成工程師",
+        "desc": "為功能、模組或整個專案從零產生缺失文件，並和程式碼實際行為對齊",
+        "when": "專案缺 README、架構說明、API 文件、操作手冊或模組文件時",
+        "template": (
+            "專案：{project}　分支：{branch}\n\n"
+            "文件需求：{task}\n\n"
+            "{extra_instructions}"
+            "請執行 gstack `/document-generate`。\n\n"
+            "先掃描程式碼、入口點、設定檔與現有 docs，判斷缺哪些文件；不要憑空編造不存在的 API 或流程。\n"
+            "產出的文件要包含：目標讀者、安裝/執行步驟、核心架構、常見工作流程、驗證方式與維護注意事項。\n"
+            "完成後列出文件路徑、來源依據，以及仍需要人工確認的假設。"
         ),
     },
     "/make-pdf": {
@@ -2996,7 +3170,7 @@ SKILLS = {
 
 
 # ─────────────────────────────────────────────
-# 自動掃描 gstack 安裝，補上尚未中文化的新 skills
+# 自動掃描已安裝 skills，補上尚未中文化的新條目
 # ─────────────────────────────────────────────
 _GENERIC_TEMPLATE = (
     "專案：{project}　分支：{branch}\n\n"
@@ -3004,6 +3178,41 @@ _GENERIC_TEMPLATE = (
     "{extra_instructions}"
     "請執行 {skill_slash} 工作流程。"
 )
+
+_GSTACK_KNOWN_SKILLS = {
+    "autoplan", "benchmark", "benchmark-models", "browse", "canary", "careful", "codex",
+    "context-restore", "context-save", "cso", "design-consultation", "design-html",
+    "design-review", "design-shotgun", "devex-review", "document-generate",
+    "document-release", "freeze", "gstack-upgrade", "guard", "health", "investigate",
+    "ios-clean", "ios-design-review", "ios-fix", "ios-qa", "ios-sync", "land-and-deploy",
+    "landing-report", "learn", "make-pdf", "office-hours", "open-gstack-browser",
+    "pair-agent", "plan-ceo-review", "plan-design-review", "plan-devex-review",
+    "plan-eng-review", "plan-tune", "qa", "qa-only", "retro", "review", "scrape",
+    "setup-browser-cookies", "setup-deploy", "setup-gbrain", "ship", "skillify",
+    "sync-gbrain", "unfreeze",
+}
+
+_MATT_POCOCK_KNOWN_SKILLS = {
+    "caveman", "design-an-interface", "diagnose", "edit-article", "git-guardrails-claude-code",
+    "grill-me", "grill-with-docs", "handoff", "improve-codebase-architecture",
+    "migrate-to-shoehorn", "obsidian-vault", "prototype", "qa", "request-refactor-plan",
+    "review", "scaffold-exercises", "setup-matt-pocock-skills", "setup-pre-commit",
+    "tdd", "to-issues", "to-prd", "triage", "ubiquitous-language", "write-a-skill",
+    "writing-beats", "writing-fragments", "writing-shape", "zoom-out",
+}
+
+_SUPERPOWERS_KNOWN_SKILLS = {
+    "brainstorming", "dispatching-parallel-agents", "executing-plans",
+    "finishing-a-development-branch", "receiving-code-review", "requesting-code-review",
+    "subagent-driven-development", "systematic-debugging", "test-driven-development",
+    "using-git-worktrees", "using-superpowers", "verification-before-completion",
+    "writing-plans", "writing-skills",
+}
+
+_UNDERSTAND_ANYTHING_KNOWN_SKILLS = {
+    "understand", "understand-chat", "understand-dashboard", "understand-diff",
+    "understand-domain", "understand-explain", "understand-knowledge", "understand-onboard",
+}
 
 
 def _parse_skill_md(path: Path) -> dict | None:
@@ -3021,7 +3230,7 @@ def _parse_skill_md(path: Path) -> dict | None:
     if not name_m:
         return None
     name = name_m.group(1).strip()
-    desc_m = re.search(r"^description:\s*\|\s*\n((?:[ \t]+.*\n)+)", frontmatter, re.MULTILINE)
+    desc_m = re.search(r"^description:\s*[|>]\s*\n((?:[ \t]+.*\n?)+)", frontmatter, re.MULTILINE)
     if desc_m:
         desc_lines = [ln.strip() for ln in desc_m.group(1).splitlines() if ln.strip()]
         description = " ".join(desc_lines)
@@ -3029,29 +3238,110 @@ def _parse_skill_md(path: Path) -> dict | None:
         desc_m = re.search(r"^description:\s*(.+)$", frontmatter, re.MULTILINE)
         description = desc_m.group(1).strip() if desc_m else ""
     first_sentence = re.split(r"(?<=[.!?。！？])\s+", description, maxsplit=1)[0]
-    return {"name": name, "description": first_sentence[:160]}
+    return {"name": name, "description": first_sentence[:160].strip("\"'")}
 
 
-def _discover_extra_skills(known: set[str]) -> list[tuple[str, dict]]:
-    if GSTACK_ROOT is None:
-        return []
-    out: list[tuple[str, dict]] = []
-    for child in sorted(GSTACK_ROOT.iterdir()):
-        skill_md = child / "SKILL.md"
-        if not skill_md.is_file():
+def _skill_dir_candidates(group: str) -> list[Path]:
+    home = Path.home()
+    candidates: list[Path] = []
+
+    if group == "gstack":
+        if GSTACK_ROOT is not None:
+            candidates.extend(child for child in GSTACK_ROOT.iterdir() if child.is_dir())
+        for name in _GSTACK_KNOWN_SKILLS:
+            candidates.extend([
+                home / ".codex" / "skills" / name,
+                home / ".claude" / "skills" / name,
+                home / ".agents" / "skills" / name,
+            ])
+    elif group == "Matt Pocock":
+        for name in _MATT_POCOCK_KNOWN_SKILLS:
+            candidates.extend([
+                home / ".codex" / "skills" / name,
+                home / ".claude" / "skills" / name,
+                home / ".agents" / "skills" / name,
+            ])
+    elif group == "Ruflo":
+        cache_root = home / ".codex" / "plugins" / "cache" / "ruflo"
+        if cache_root.is_dir():
+            candidates.extend(path.parent for path in cache_root.glob("ruflo-*/*/skills/*/SKILL.md"))
+    elif group == "Superpowers":
+        candidates.extend(path.parent for path in (
+            home / ".codex" / "plugins" / "cache" / "openai-curated" / "superpowers"
+        ).glob("*/skills/*/SKILL.md"))
+        for name in _SUPERPOWERS_KNOWN_SKILLS:
+            candidates.extend([
+                home / ".codex" / "skills" / name,
+                home / ".claude" / "skills" / name,
+                home / ".agents" / "skills" / name,
+            ])
+    elif group == "Understand-Anything":
+        cache_root = home / ".codex" / "plugins" / "cache" / "understand-anything"
+        if cache_root.is_dir():
+            candidates.extend(path.parent for path in cache_root.glob("**/skills/*/SKILL.md"))
+        for name in _UNDERSTAND_ANYTHING_KNOWN_SKILLS:
+            candidates.extend([
+                home / ".codex" / "skills" / name,
+                home / ".claude" / "skills" / name,
+                home / ".agents" / "skills" / name,
+            ])
+
+    seen: set[Path] = set()
+    unique: list[Path] = []
+    for path in candidates:
+        try:
+            resolved = path.resolve()
+        except OSError:
+            resolved = path
+        if resolved in seen:
             continue
-        parsed = _parse_skill_md(skill_md)
-        if parsed is None:
-            continue
-        slash = "/" + parsed["name"]
-        if slash in known:
-            continue
-        out.append((slash, {
-            "role": "gstack skill",
-            "desc": parsed["description"] or f"(尚未中文化) {parsed['name']}",
-            "when": "參考 SKILL.md 的 description 判斷適用情境",
-            "template": _GENERIC_TEMPLATE.replace("{skill_slash}", slash),
-        }))
+        seen.add(resolved)
+        unique.append(path)
+    return unique
+
+
+def _slash_for_discovered_skill(group: str, name: str) -> str:
+    if group == "Ruflo":
+        return f"ruflo:{name}"
+    if group == "Superpowers":
+        return f"/superpowers {name}"
+    return f"/{name}"
+
+
+def _discover_extra_skills(known: set[str]) -> dict[str, list[tuple[str, dict]]]:
+    out: dict[str, list[tuple[str, dict]]] = {
+        "gstack": [],
+        "Matt Pocock": [],
+        "Ruflo": [],
+        "Superpowers": [],
+        "Understand-Anything": [],
+    }
+    role_by_group = {
+        "gstack": "gstack skill",
+        "Matt Pocock": "Matt Pocock skill",
+        "Ruflo": "Ruflo skill",
+        "Superpowers": "Superpowers skill",
+        "Understand-Anything": "Understand-Anything skill",
+    }
+
+    for group in out:
+        for child in sorted(_skill_dir_candidates(group)):
+            skill_md = child / "SKILL.md"
+            if not skill_md.is_file():
+                continue
+            parsed = _parse_skill_md(skill_md)
+            if parsed is None:
+                continue
+            slash = _slash_for_discovered_skill(group, parsed["name"])
+            if slash in known:
+                continue
+            known.add(slash)
+            out[group].append((slash, {
+                "role": role_by_group[group],
+                "desc": parsed["description"] or f"(尚未中文化) {parsed['name']}",
+                "when": "參考 SKILL.md 的 description 判斷適用情境",
+                "template": _GENERIC_TEMPLATE.replace("{skill_slash}", slash),
+            }))
     return out
 
 
@@ -3225,6 +3515,238 @@ SKILLS["/superpowers systematic-debugging"] = {
         "- **Validation Plan**：如何驗證假設。\n"
         "- **Minimal Fix Plan**：確認 root cause 後才提供。\n"
         "- **Approval Gate**：請使用者確認後，才進入修改或 `/superpowers writing-plans`。"
+    ),
+}
+SKILLS["/superpowers test-driven-development"] = {
+    "role": "Superpowers — TDD 工程師",
+    "desc": "功能或 bugfix 實作前先寫測試，遵守 red-green-refactor",
+    "when": "要新增功能或修 bug，且行為可以用測試鎖住時",
+    "template": (
+        "專案：{project}　分支：{branch}\n\n"
+        "要用 TDD 完成的行為：{task}\n\n"
+        "{extra_instructions}"
+        "請使用 Superpowers test-driven-development。\n\n"
+        "流程：先定義最小可測行為，寫一個會失敗的測試，確認真的失敗，再做最小實作讓它通過，最後重構。\n"
+        "每一輪都回報測試名稱、失敗訊息、最小修改與驗證命令；不要在沒有 failing test 的情況下直接實作。"
+    ),
+}
+SKILLS["/superpowers requesting-code-review"] = {
+    "role": "Superpowers — Code Review 請求者",
+    "desc": "完成重要改動後，請求獨立 review 來檢查需求、風險與測試缺口",
+    "when": "功能完成、準備 merge/PR、或改動風險較高時",
+    "template": (
+        "專案：{project}　分支：{branch}\n\n"
+        "要請 review 的改動：{task}\n\n"
+        "{extra_instructions}"
+        "請使用 Superpowers requesting-code-review。\n\n"
+        "先整理 diff 摘要、需求來源、已跑驗證、已知風險與希望 reviewer 特別看的地方。\n"
+        "review 請聚焦 correctness、regression、missing tests、scope creep 與文件/遷移缺口。"
+    ),
+}
+SKILLS["/superpowers receiving-code-review"] = {
+    "role": "Superpowers — Review Feedback 處理者",
+    "desc": "收到 code review 後先理解與驗證意見，再決定要改、反駁或追問",
+    "when": "review feedback 不清楚、可能有誤，或需要逐條處理 reviewer 建議時",
+    "template": (
+        "專案：{project}　分支：{branch}\n\n"
+        "Review feedback：{task}\n\n"
+        "{extra_instructions}"
+        "請使用 Superpowers receiving-code-review。\n\n"
+        "逐條分類 feedback：必須修、需要澄清、不同意但要提出證據、可延後。\n"
+        "不要盲目接受；每個修改都要說明技術理由、影響範圍與驗證方式。"
+    ),
+}
+SKILLS["/superpowers finishing-a-development-branch"] = {
+    "role": "Superpowers — 分支收尾",
+    "desc": "實作完成且驗證通過後，決定 merge、PR、清理或交接方式",
+    "when": "一個 development branch 的工作已完成，需要整理最後狀態與下一步時",
+    "template": (
+        "專案：{project}　分支：{branch}\n\n"
+        "收尾目標：{task}\n\n"
+        "{extra_instructions}"
+        "請使用 Superpowers finishing-a-development-branch。\n\n"
+        "先確認 git status、測試與驗證結果、diff 摘要、未提交檔案與文件更新狀態。\n"
+        "接著提出可選路徑：建立 PR、merge、保留分支、清理暫存、交接；說明每個選項的風險與建議。"
+    ),
+}
+SKILLS["/superpowers verification-before-completion"] = {
+    "role": "Superpowers — 完成前驗證員",
+    "desc": "在宣稱完成、修好或測試通過前，先跑實際驗證並引用結果",
+    "when": "準備回報完成、fixed、passing、ready for review 之前",
+    "template": (
+        "專案：{project}　分支：{branch}\n\n"
+        "要驗證的完成條件：{task}\n\n"
+        "{extra_instructions}"
+        "請使用 Superpowers verification-before-completion。\n\n"
+        "列出必須驗證的命令與手動檢查，實際執行後再下結論。\n"
+        "回報必須包含命令、結果、失敗或未執行原因；不要用推測取代證據。"
+    ),
+}
+SKILLS["/superpowers dispatching-parallel-agents"] = {
+    "role": "Superpowers — 平行 Agent 調度",
+    "desc": "把彼此獨立的 2 個以上任務拆給多個 agent 平行處理",
+    "when": "任務可分解且子任務沒有共享狀態或先後依賴時",
+    "template": (
+        "專案：{project}　分支：{branch}\n\n"
+        "可平行化的任務：{task}\n\n"
+        "{extra_instructions}"
+        "請使用 Superpowers dispatching-parallel-agents。\n\n"
+        "先判斷哪些工作真的獨立，為每個 agent 定義輸入、輸出、限制與回報格式。\n"
+        "不要把會修改同一檔案或需要序列決策的工作平行化；最後整合各 agent 結論並指出衝突。"
+    ),
+}
+SKILLS["/superpowers subagent-driven-development"] = {
+    "role": "Superpowers — Subagent 開發協調",
+    "desc": "依 implementation plan 讓多個 subagent 處理獨立任務，並設 review checkpoints",
+    "when": "已有 plan，且多個 task 可在同一 session 中分工執行時",
+    "template": (
+        "專案：{project}　分支：{branch}\n\n"
+        "Subagent 執行範圍：{task}\n\n"
+        "{extra_instructions}"
+        "請使用 Superpowers subagent-driven-development。\n\n"
+        "先讀 plan，標出可平行與必須序列的 task；給每個 subagent 清楚邊界、檔案範圍與驗收條件。\n"
+        "每個 checkpoint 都要 review diff、測試結果與是否偏離 plan。"
+    ),
+}
+SKILLS["/superpowers using-git-worktrees"] = {
+    "role": "Superpowers — Worktree 隔離",
+    "desc": "開始較大功能前建立隔離工作區，避免污染目前 workspace",
+    "when": "要做 feature work、平行實驗或執行 implementation plan，且需要保持目前工作區乾淨時",
+    "template": (
+        "專案：{project}　分支：{branch}\n\n"
+        "要隔離的工作：{task}\n\n"
+        "{extra_instructions}"
+        "請使用 Superpowers using-git-worktrees。\n\n"
+        "先檢查目前 git status 與分支狀態；若適合，建立 worktree 或說明為何不需要。\n"
+        "回報 worktree 路徑、基底分支、如何切回與清理方式。"
+    ),
+}
+SKILLS["/superpowers writing-skills"] = {
+    "role": "Superpowers — Skill 作者",
+    "desc": "建立、修改或驗證 skills，確保 trigger、流程與測試方式清楚",
+    "when": "要新增 skill、更新既有 skill，或確認 skill 可部署前",
+    "template": (
+        "專案：{project}　分支：{branch}\n\n"
+        "Skill 需求：{task}\n\n"
+        "{extra_instructions}"
+        "請使用 Superpowers writing-skills。\n\n"
+        "先定義 skill 何時該用、何時不該用、成功標準與必要資源。\n"
+        "SKILL.md 要保持主流程精簡，細節放 references/scripts/templates；最後提供驗證案例。"
+    ),
+}
+
+# ── Understand-Anything ───────────────────────
+SKILLS["── Understand-Anything ──"] = None
+SKILLS["/understand"] = {
+    "role": "Understand-Anything — Codebase 分析器",
+    "desc": "分析 codebase 並產生 `.understand-anything/knowledge-graph.json` 互動知識圖譜",
+    "when": "第一次理解專案、接手陌生 codebase、重構前想看架構與關係圖時",
+    "template": (
+        "專案：{project}　分支：{branch}\n\n"
+        "分析範圍 / 目標：{task}\n\n"
+        "{extra_instructions}"
+        "請使用 Understand-Anything `/understand` skill。\n\n"
+        "## 目標\n"
+        "為目前專案建立 codebase knowledge graph，輸出到 `.understand-anything/knowledge-graph.json`。\n\n"
+        "## 執行要求\n"
+        "1. 優先使用 `--language zh-TW` 產生繁體中文摘要與導覽。\n"
+        "2. 第一次執行時先建立並檢查 `.understand-anything/.understandignore`，排除 build、dist、cache、大型二進位檔與不相關產物。\n"
+        "3. 若已有 graph，依目前 git commit 判斷要 incremental update、`--full` 重建或 `--review` 驗證。\n"
+        "4. 分析完成後回報：檔案數、節點/邊數、layers、tour steps、warnings、輸出路徑。\n\n"
+        "## 建議指令\n"
+        "`/understand --language zh-TW`；若要強制重建，使用 `/understand --full --language zh-TW`。"
+    ),
+}
+SKILLS["/understand-dashboard"] = {
+    "role": "Understand-Anything — Graph Dashboard",
+    "desc": "啟動互動式 dashboard，視覺化 codebase knowledge graph",
+    "when": "已產生 `.understand-anything/knowledge-graph.json`，想用圖形探索架構、layers、tour 或 diff overlay 時",
+    "template": (
+        "專案：{project}　分支：{branch}\n\n"
+        "Dashboard 目標：{task}\n\n"
+        "{extra_instructions}"
+        "請使用 Understand-Anything `/understand-dashboard` skill。\n\n"
+        "先確認 `.understand-anything/knowledge-graph.json` 存在；若不存在，請提示先執行 `/understand`。\n"
+        "啟動 dashboard 後，回報完整 tokenized URL，必須包含 `?token=`，並說明正在讀取哪個 graph 目錄。"
+    ),
+}
+SKILLS["/understand-chat"] = {
+    "role": "Understand-Anything — Codebase 問答",
+    "desc": "根據 knowledge graph 回答 codebase 問題，引用相關節點、檔案、layers 與關係",
+    "when": "已有 knowledge graph，想問架構、資料流、模組責任、某功能在哪裡實作時",
+    "template": (
+        "專案：{project}　分支：{branch}\n\n"
+        "想問 codebase 的問題：{task}\n\n"
+        "{extra_instructions}"
+        "請使用 Understand-Anything `/understand-chat` skill。\n\n"
+        "先檢查 `.understand-anything/knowledge-graph.json` 是否存在；若不存在，請要求先跑 `/understand`。\n"
+        "回答時只讀相關 subgraph：搜尋匹配 node、讀 1-hop edges、找 layer context，再用具體檔案與節點關係回答。"
+    ),
+}
+SKILLS["/understand-explain"] = {
+    "role": "Understand-Anything — 深度解說",
+    "desc": "針對特定檔案、函式或模組做 deep-dive 說明",
+    "when": "想理解某個檔案、函式、class 或模組在整體架構中的角色時",
+    "template": (
+        "專案：{project}　分支：{branch}\n\n"
+        "要解釋的檔案 / 元件：{task}\n\n"
+        "{extra_instructions}"
+        "請使用 Understand-Anything `/understand-explain` skill。\n\n"
+        "先在 knowledge graph 找到目標 node，收集 outgoing/incoming edges、所在 layer、相鄰 nodes，再讀實際 source file。\n"
+        "輸出請包含：架構角色、內部結構、外部依賴、資料流、常見修改風險與建議閱讀路徑。"
+    ),
+}
+SKILLS["/understand-diff"] = {
+    "role": "Understand-Anything — Diff 影響分析",
+    "desc": "用 knowledge graph 分析目前 git diff 直接改了什麼、影響哪些元件與風險",
+    "when": "準備 review、PR、merge 前，想知道改動的 blast radius 與受影響 layers 時",
+    "template": (
+        "專案：{project}　分支：{branch}\n\n"
+        "Diff 分析重點：{task}\n\n"
+        "{extra_instructions}"
+        "請使用 Understand-Anything `/understand-diff` skill。\n\n"
+        "先取得 changed files，再從 knowledge graph 找對應 nodes 與 1-hop affected nodes。\n"
+        "輸出 Changed Components、Affected Components、Affected Layers、Risk Assessment，並寫入 `.understand-anything/diff-overlay.json` 供 dashboard 顯示。"
+    ),
+}
+SKILLS["/understand-domain"] = {
+    "role": "Understand-Anything — Domain Flow 分析器",
+    "desc": "從 codebase 或既有 graph 萃取 business domains、flows 與 process steps",
+    "when": "想把程式碼映射到業務流程、domain 概念、使用者流程或產品邏輯時",
+    "template": (
+        "專案：{project}　分支：{branch}\n\n"
+        "Domain 分析目標：{task}\n\n"
+        "{extra_instructions}"
+        "請使用 Understand-Anything `/understand-domain` skill。\n\n"
+        "若已有 `.understand-anything/knowledge-graph.json`，優先由既有 graph 推導；若沒有，執行 lightweight scan。\n"
+        "輸出 `.understand-anything/domain-graph.json`，並回報 domains、flows、steps、主要來源檔案與任何不確定的 domain 假設。"
+    ),
+}
+SKILLS["/understand-onboard"] = {
+    "role": "Understand-Anything — Onboarding Guide 作者",
+    "desc": "根據 knowledge graph 產生新成員 onboarding guide",
+    "when": "要讓新工程師快速理解專案架構、layers、tour、關鍵檔案與複雜熱點時",
+    "template": (
+        "專案：{project}　分支：{branch}\n\n"
+        "Onboarding 對象 / 需求：{task}\n\n"
+        "{extra_instructions}"
+        "請使用 Understand-Anything `/understand-onboard` skill。\n\n"
+        "先確認 knowledge graph 存在；讀 project metadata、layers、tour 與 file-level nodes。\n"
+        "產生 markdown guide，包含 Project Overview、Architecture Layers、Key Concepts、Guided Tour、File Map、Complexity Hotspots。\n"
+        "最後詢問是否要保存到 `docs/ONBOARDING.md`。"
+    ),
+}
+SKILLS["/understand-knowledge"] = {
+    "role": "Understand-Anything — Knowledge Base 分析器",
+    "desc": "分析 Karpathy-pattern LLM wiki，產生文章、entity、topic、claim 的互動知識圖譜",
+    "when": "有 wiki / knowledge base，包含 index.md、wikilinks、raw sources，想轉成可探索 graph 時",
+    "template": (
+        "專案：{project}　分支：{branch}\n\n"
+        "Wiki 目錄 / 知識庫目標：{task}\n\n"
+        "{extra_instructions}"
+        "請使用 Understand-Anything `/understand-knowledge` skill。\n\n"
+        "先偵測目標目錄是否符合 Karpathy-pattern LLM wiki：index.md、多個 markdown、wikilinks、可選 raw sources。\n"
+        "成功後產生 `.understand-anything/knowledge-graph.json`，回報 articles、entities、topics、claims、sources、edges、layers 與 tour steps。"
     ),
 }
 
@@ -3453,11 +3975,14 @@ SKILLS["/ui-ux-pro-max typography"] = {
     ),
 }
 
-_extra = _discover_extra_skills(known=set(SKILLS.keys()))
-if _extra:
-    SKILLS["── 尚未中文化 ──"] = None
-    for slash, data in _extra:
-        SKILLS[slash] = data
+_extra_by_group = _discover_extra_skills(known=set(SKILLS.keys()))
+for _group, _entries in _extra_by_group.items():
+    if not _entries:
+        continue
+    _marker = f"── {_group} 尚未中文化 ──"
+    SKILLS[_marker] = None
+    for _slash, _data in _entries:
+        SKILLS[_slash] = _data
 
 
 # ─────────────────────────────────────────────
@@ -3473,13 +3998,26 @@ _MARKER_TO_GROUP = {
     "── 工作流程 ──": "gstack",
     "── Ruflo 多 Agent ──": "Ruflo",
     "── Superpowers ──": "Superpowers",
+    "── Understand-Anything ──": "Understand-Anything",
     "── UI/UX Pro Max ──": "UI/UX",
     "── 尚未中文化 ──": "gstack",
+    "── gstack 尚未中文化 ──": "gstack",
+    "── Matt Pocock 尚未中文化 ──": "Matt Pocock",
+    "── Ruflo 尚未中文化 ──": "Ruflo",
+    "── Superpowers 尚未中文化 ──": "Superpowers",
+    "── Understand-Anything 尚未中文化 ──": "Understand-Anything",
 }
 
 def _build_group_skills() -> dict[str, dict]:
     """將 SKILLS 按分隔標題切割成四個群組字典。"""
-    result: dict[str, dict] = {"gstack": {}, "Matt Pocock": {}, "Ruflo": {}, "Superpowers": {}, "UI/UX": {}}
+    result: dict[str, dict] = {
+        "gstack": {},
+        "Matt Pocock": {},
+        "Ruflo": {},
+        "Superpowers": {},
+        "Understand-Anything": {},
+        "UI/UX": {},
+    }
     current_group = "gstack"  # marker 出現前預設歸入 gstack
 
     for key, data in SKILLS.items():
@@ -3933,18 +4471,32 @@ class GStackPromptBuilder(QMainWindow):
         sg_layout.setSpacing(8)
 
         # 群組切換列（普通按鈕，用樣式模擬選中狀態，避免 setCheckable 的信號干擾）
-        tab_row = QHBoxLayout()
-        tab_row.setSpacing(4)
+        # 3 欄換行，避免新增工具分頁後在窄左欄被 splitter 裁切。
+        tab_grid = QGridLayout()
+        tab_grid.setHorizontalSpacing(4)
+        tab_grid.setVerticalSpacing(4)
         self._group_buttons: dict[str, QPushButton] = {}
-        tab_labels = {"gstack": "gstack", "Matt Pocock": "Matt Pocock", "Ruflo": "Ruflo", "Superpowers": "Superpowers", "UI/UX": "UI/UX"}
+        tab_labels = {
+            "gstack": "gstack",
+            "Matt Pocock": "Matt Pocock",
+            "Ruflo": "Ruflo",
+            "Superpowers": "Superpowers",
+            "Understand-Anything": "Understand",
+            "UI/UX": "UI/UX",
+        }
         self._current_group = "gstack"
-        for gkey, glabel in tab_labels.items():
+        for idx, (gkey, glabel) in enumerate(tab_labels.items()):
             btn = QPushButton(glabel)
             btn.setObjectName(f"tab_btn_{gkey}")
+            btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+            btn.setMinimumHeight(26)
             btn.pressed.connect(lambda g=gkey: self._switch_group(g))
             self._group_buttons[gkey] = btn
-            tab_row.addWidget(btn)
-        sg_layout.addLayout(tab_row)
+            row, col = divmod(idx, 3)
+            tab_grid.addWidget(btn, row, col)
+        for col in range(3):
+            tab_grid.setColumnStretch(col, 1)
+        sg_layout.addLayout(tab_grid)
 
         self.skill_combo = QComboBox()
         self._populate_skill_combo(self._current_group)
@@ -4370,13 +4922,13 @@ Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue
                 btn.setStyleSheet(
                     f"QPushButton {{ background-color: {t['accent_blue']}; "
                     f"color: {t['on_accent']}; border-radius: 5px; "
-                    f"padding: 4px 10px; font-size: 12px; font-weight: bold; border: none; }}"
+                    f"padding: 4px 6px; font-size: 12px; font-weight: bold; border: none; }}"
                 )
             else:
                 btn.setStyleSheet(
                     f"QPushButton {{ background-color: {t['bg_surface2']}; "
                     f"color: {t['text_sub']}; border-radius: 5px; "
-                    f"padding: 4px 10px; font-size: 12px; border: 1px solid {t['border']}; }}"
+                    f"padding: 4px 6px; font-size: 12px; border: 1px solid {t['border']}; }}"
                     f"QPushButton:hover {{ border-color: {t['accent_blue']}; "
                     f"color: {t['text_main']}; }}"
                 )
@@ -4416,13 +4968,26 @@ Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue
         "/scaffold-exercises": ("練習結構（選填）", "例：3 sections，每 section 4 題，含 solutions"),
         "/migrate-to-shoehorn": ("遷移範圍（選填）", "例：src/**/*.test.ts"),
         "/git-guardrails-claude-code": ("要阻擋的 git 操作（選填）", "例：push、reset --hard、clean -fd"),
+        "/prototype": ("原型要驗證的問題（選填）", "例：匯入流程狀態機、三種設定頁 UI 變體"),
+        "/handoff": ("交接焦點（選填）", "例：目前分支狀態、下一步、已知風險"),
+        "/edit-article": ("文章路徑 / 編輯目標（選填）", "例：docs/post.md，重整結構與開頭"),
+        "/obsidian-vault": ("Vault 任務（選填）", "例：整理 AI notes index、建立 [[prompt-builder]]"),
+        "/writing-fragments": ("素材主題 / 文件（選填）", "例：agent workflow essay，追加到 notes/raw.md"),
+        "/writing-shape": ("素材文件 / 文章方向（選填）", "例：notes/raw.md，整理成技術文章"),
+        "/writing-beats": ("起始 beat / 文章素材（選填）", "例：從反例開場，再走到設計原則"),
         "/investigate": ("已試過什麼（選填）", "例：重啟服務、改過 timeout 設定，都沒用"),
+        "/ios-qa": ("iOS 測試目標（選填）", "例：登入流程、iPhone 15 Pro、深色模式"),
+        "/ios-fix": ("iOS 問題線索（選填）", "例：SwiftUI sheet 關閉後狀態沒重置"),
+        "/ios-design-review": ("iOS 畫面 / 流程（選填）", "例：SettingsView、onboarding flow"),
+        "/ios-clean": ("清理範圍（選填）", "例：移除 DebugBridge 與 #if DEBUG wiring"),
+        "/ios-sync": ("同步範圍（選填）", "例：更新 DebugBridge 到最新 gstack template"),
         "/review":      ("審查重點（選填）", "例：race condition、資料一致性"),
         "/qa":          ("測試重點 / 已試過什麼（選填）", "例：登入、下單、edge case 空資料"),
         "/qa-only":     ("測試重點 / 已試過什麼（選填）", "例：登入、下單、edge case 空資料"),
         "/ship":        ("改了哪些檔案（選填）", "例：src/auth.py、templates/login.html"),
         "/land-and-deploy": ("改了哪些檔案（選填）", "例：src/auth.py、config/prod.yml"),
         "/document-release": ("改了哪些檔案（選填）", "例：README.md、docs/api.md"),
+        "/document-generate": ("文件需求（選填）", "例：為 settings module 產生架構與使用文件"),
         "/design-review": ("目標頁面 / URL（選填）", "例：http://localhost:3000/dashboard"),
         "/design-html":   ("目標頁面 / URL（選填）", "例：http://localhost:3000/landing"),
         "/browse":        ("目標頁面 / URL（選填）", "例：https://app.example.com/login"),
@@ -4434,6 +4999,23 @@ Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue
         "/superpowers writing-plans": ("已確認的設計方向 / spec 路徑（選填）", "例：採用獨立 Superpowers registry，產出可驗收 tasks"),
         "/superpowers executing-plans": ("Plan 路徑 + Task ID（選填）", "例：docs/superpowers/plans/prompt-builder.md 的 T-003"),
         "/superpowers systematic-debugging": ("Bug / 失敗現象 / 重現線索（選填）", "例：切換 Superpowers Tab 後下拉選單沒有更新"),
+        "/superpowers test-driven-development": ("目標行為（選填）", "例：匯入 invalid JSON 時顯示錯誤且不覆蓋設定"),
+        "/superpowers requesting-code-review": ("Review 範圍（選填）", "例：本次 prompt registry 更新"),
+        "/superpowers receiving-code-review": ("Review 意見（選填）", "例：貼上 reviewer comment 或 PR 討論"),
+        "/superpowers finishing-a-development-branch": ("收尾狀態（選填）", "例：測試已過，準備開 PR"),
+        "/superpowers verification-before-completion": ("完成條件（選填）", "例：py_compile 通過且 UI 可啟動"),
+        "/superpowers dispatching-parallel-agents": ("可平行任務（選填）", "例：文件、測試、UI 截圖三路並行"),
+        "/superpowers subagent-driven-development": ("Plan / task 範圍（選填）", "例：docs/plan.md 的 T-001 到 T-004"),
+        "/superpowers using-git-worktrees": ("隔離工作內容（選填）", "例：experiment/new-parser"),
+        "/superpowers writing-skills": ("Skill 需求（選填）", "例：release-checklist skill"),
+        "/understand": ("分析範圍 / flags（選填）", "例：目前專案 --language zh-TW，或 src/ --full"),
+        "/understand-dashboard": ("Graph 目錄（選填）", "例：目前專案或 D:\\repo\\other-project"),
+        "/understand-chat": ("想問 codebase 的問題（選填）", "例：設定匯入流程在哪些檔案實作？"),
+        "/understand-explain": ("檔案 / 元件（選填）", "例：gstack_prompt_builder.py 或 function:build_preview"),
+        "/understand-diff": ("Diff 分析重點（選填）", "例：這次 prompt registry 更新會影響哪些 UI 元件？"),
+        "/understand-domain": ("Domain 分析目標（選填）", "例：prompt 建構、skill 分組、release update 流程"),
+        "/understand-onboard": ("Onboarding 對象（選填）", "例：第一次接手 PyQt6 prompt builder 的工程師"),
+        "/understand-knowledge": ("Wiki 目錄（選填）", "例：docs/wiki 或 notes/llm-wiki"),
         "/health":        ("要檢查的模組 / 路徑（選填）", "例：src/core/、src/api/"),
         "/freeze":        ("鎖定目錄（選填）", "例：src/auth/"),
         "/guard":         ("鎖定目錄（選填）", "例：src/auth/"),
