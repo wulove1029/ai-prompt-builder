@@ -27,25 +27,20 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Configure update repository
+      - name: Install Inno Setup
+        run: choco install innosetup --yes --no-progress
+
+      - name: Build onedir (PyInstaller)
+        run: pyinstaller --noconfirm "gstack Prompt Builder.spec"
+
+      - name: Build installer (Inno Setup)
         shell: pwsh
         run: |
-          $path = "gstack_prompt_builder.py"
-          $content = Get-Content $path -Raw
-          $content = $content.Replace("YOUR_GITHUB_USERNAME/ai-prompt-builder", "${{ github.repository }}")
-          Set-Content $path $content -Encoding UTF8
-
-      - name: Build EXE
-        run: pyinstaller "gstack Prompt Builder.spec"
-
-      - name: Upload build artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: AI Prompt Builder
-          path: "dist/AI Prompt Builder.exe"
+          $version = "${{ github.ref_name }}".TrimStart("v")
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "/DMyAppVersion=$version" installer.iss
 
       - name: Publish GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: "dist/AI Prompt Builder.exe"
+          files: "installer_output/*.exe"

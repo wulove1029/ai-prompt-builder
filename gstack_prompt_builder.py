@@ -14,6 +14,7 @@ import re
 import subprocess
 import tempfile
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 from PyQt6.QtWidgets import (
@@ -58,9 +59,9 @@ def _read_gstack_version() -> str:
 
 GSTACK_VERSION = _read_gstack_version()
 
-APP_VERSION = "0.1.8"
+APP_VERSION = "0.2.0"
 UPDATE_REPO = os.environ.get("AI_PROMPT_BUILDER_UPDATE_REPO", "wulove1029/ai-prompt-builder")
-UPDATE_ASSET_NAME = "AI Prompt Builder.exe"
+UPDATE_ASSET_NAME = "AI_Prompt_Builder_Setup.exe"
 
 # ─────────────────────────────────────────────
 # App 圖示（base64 PNG，256×256，免外部檔案）
@@ -3670,11 +3671,16 @@ class _AppUpdateChecker(QThread):
             return
 
         assets = release.get("assets") or []
-        asset = next((item for item in assets if item.get("name") == UPDATE_ASSET_NAME), None)
+        # 找 Inno Setup 安裝檔（名稱含 "setup" 的 .exe）。
+        asset = next(
+            (item for item in assets
+             if str(item.get("name", "")).lower().endswith(".exe")
+             and "setup" in str(item.get("name", "")).lower()
+             and item.get("browser_download_url")),
+            None,
+        )
         if asset is None:
-            asset = next((item for item in assets if str(item.get("name", "")).lower().endswith(".exe")), None)
-        if asset is None or not asset.get("browser_download_url"):
-            self.check_failed.emit(f"找到 v{remote_version}，但 release 沒有 .exe asset。")
+            self.check_failed.emit(f"找到 v{remote_version}，但 release 沒有安裝檔（*Setup*.exe）。")
             return
 
         self.update_available.emit({
@@ -4346,10 +4352,23 @@ class GStackPromptBuilder(QMainWindow):
             )
             return
 
-        target = Path(sys.executable)
+        # 只接受 GitHub（HTTPS）來的安裝檔，避免被導向惡意主機後執行任意程式。
+        url = info.get("download_url") or ""
+        host = (urllib.parse.urlsplit(url).hostname or "").lower()
+        trusted = host in ("github.com", "api.github.com") or host.endswith(
+            (".github.com", ".githubusercontent.com")
+        )
+        if not url.lower().startswith("https://") or not trusted:
+            QMessageBox.warning(self, "更新來源不受信任", f"拒絕從不受信任的來源下載：{host or url}")
+            return
+
+        # 安裝檔名只取 basename，避免被「..\\」之類路徑跳脫。
+        safe_name = Path(info.get("asset_name") or UPDATE_ASSET_NAME).name
+        if not safe_name.lower().endswith(".exe"):
+            safe_name = UPDATE_ASSET_NAME
         tmp_dir = Path(tempfile.gettempdir()) / "ai-prompt-builder-update"
         tmp_dir.mkdir(parents=True, exist_ok=True)
-        download_path = tmp_dir / info["asset_name"]
+        installer_path = tmp_dir / safe_name
 
         expected_size = info.get("asset_size")
         try:
@@ -4358,7 +4377,7 @@ class GStackPromptBuilder(QMainWindow):
                 headers={"User-Agent": f"AI-Prompt-Builder/{APP_VERSION}"},
             )
             sha = hashlib.sha256()
-            with urllib.request.urlopen(req, timeout=60) as resp, download_path.open("wb") as out:
+            with urllib.request.urlopen(req, timeout=120) as resp, installer_path.open("wb") as out:
                 while True:
                     chunk = resp.read(1024 * 1024)
                     if not chunk:
@@ -4366,129 +4385,55 @@ class GStackPromptBuilder(QMainWindow):
                     sha.update(chunk)
                     out.write(chunk)
         except Exception as exc:
-            QMessageBox.warning(self, "下載失敗", f"無法下載更新：{exc}")
+            QMessageBox.warning(self, "下載失敗", f"無法下載安裝檔：{exc}")
             return
 
-        # 完整性驗證：大小與雜湊都要對，避免把「半個壞檔」換上去導致無法啟動
-        actual_size = download_path.stat().st_size if download_path.is_file() else 0
-        if actual_size < 1024 * 1024:
+        # 完整性驗證：大小 + SHA-256 都要對，否則不執行安裝檔。
+        actual_size = installer_path.stat().st_size if installer_path.is_file() else 0
+        if actual_size < 512 * 1024:
             QMessageBox.warning(self, "下載失敗", "下載檔案不存在或過小，已取消安裝。")
             return
         if expected_size and actual_size != expected_size:
             QMessageBox.warning(
                 self,
                 "下載不完整",
-                f"下載大小不符（預期 {expected_size:,}，實際 {actual_size:,} bytes），"
-                "已取消安裝以免損壞程式。請稍後再試。",
+                f"下載大小不符（預期 {expected_size:,}，實際 {actual_size:,} bytes），已取消安裝。請稍後再試。",
             )
             return
         digest = info.get("asset_digest") or ""
         if digest.startswith("sha256:"):
             if sha.hexdigest().lower() != digest.split(":", 1)[1].strip().lower():
                 QMessageBox.warning(
-                    self,
-                    "下載損壞",
-                    "下載檔案雜湊驗證失敗，已取消安裝以免損壞程式。請稍後再試。",
+                    self, "下載損壞", "安裝檔雜湊驗證失敗，已取消安裝。請稍後再試。"
                 )
                 return
-
-        script_path = tmp_dir / "install-ai-prompt-builder-update.ps1"
-        log_path = tmp_dir / "update.log"
-        backup = str(target.with_suffix(target.suffix + ".bak"))
-        script = f"""
-$ErrorActionPreference = 'Stop'
-$pidToWait = {os.getpid()}
-$source = {json.dumps(str(download_path))}
-$target = {json.dumps(str(target))}
-$backup = {json.dumps(backup)}
-$expectedSize = {int(actual_size)}
-$log = {json.dumps(str(log_path))}
-
-function Log($m) {{ try {{ "$(Get-Date -Format o)  $m" | Out-File -LiteralPath $log -Append -Encoding utf8 }} catch {{}} }}
-
-# 清掉從舊程式繼承來的 PyInstaller onefile 環境變數。否則重啟的新 exe 會以為自己是
-# 舊程式的子階段，去找已被刪除的舊解壓目錄 -> 報「Failed to load Python DLL」。
-Get-ChildItem Env: | Where-Object {{ $_.Name -like '_PYI_*' -or $_.Name -like '_MEI*' }} | ForEach-Object {{ Remove-Item "Env:\\$($_.Name)" -ErrorAction SilentlyContinue }}
-Log "start pid=$pidToWait target=$target expected=$expectedSize"
-
-function Test-Unlocked($path) {{
-  if (-not (Test-Path -LiteralPath $path)) {{ return $true }}
-  try {{ $fs = [System.IO.File]::Open($path, 'Open', 'ReadWrite', 'None'); $fs.Close(); return $true }} catch {{ return $false }}
-}}
-
-# 1) 等舊程序結束
-try {{ Wait-Process -Id $pidToWait -Timeout 60 }} catch {{ Start-Sleep -Seconds 3 }}
-Log "old process gone"
-
-# 2) 等 exe 檔案完全解鎖（onefile 啟動器母程序可能仍鎖著檔），最多等 90 秒。
-$deadline = (Get-Date).AddSeconds(90)
-while (-not (Test-Unlocked $target) -and (Get-Date) -lt $deadline) {{ Start-Sleep -Milliseconds 400 }}
-Log "target unlocked"
-
-# 3) 來源完整性再確認（大小要等於下載驗證過的大小）
-$sourceSize = (Get-Item -LiteralPath $source).Length
-if ($sourceSize -ne $expectedSize -or $sourceSize -lt 1048576) {{ Log "ABORT source $sourceSize vs $expectedSize"; throw "Source size mismatch" }}
-
-# 4) 備份舊版
-if (Test-Path -LiteralPath $backup) {{ Remove-Item -LiteralPath $backup -Force -ErrorAction SilentlyContinue }}
-if (Test-Path -LiteralPath $target) {{ Copy-Item -LiteralPath $target -Destination $backup -Force }}
-Log "backed up"
-
-# 5) 替換（重試，且每次都驗證大小一致才算成功）
-$copied = $false
-for ($i = 0; $i -lt 40; $i++) {{
-  try {{
-    Copy-Item -LiteralPath $source -Destination $target -Force
-    if ((Get-Item -LiteralPath $target).Length -eq $sourceSize) {{ $copied = $true; break }}
-  }} catch {{ Start-Sleep -Milliseconds 500 }}
-  Start-Sleep -Milliseconds 500
-}}
-
-# 6) 失敗則還原舊版，絕不留壞檔
-if (-not $copied) {{
-  if (Test-Path -LiteralPath $backup) {{ Copy-Item -LiteralPath $backup -Destination $target -Force }}
-  Log "ABORT could not replace; restored backup"
-  throw "Could not replace application executable"
-}}
-Log "swapped ok"
-
-# 7) 用系統 shell（explorer）啟動新版 = 等同使用者雙擊，環境乾淨，避免 onefile 載入器混淆。
-Start-Sleep -Seconds 1
-try {{
-  Start-Process -FilePath "explorer.exe" -ArgumentList ('"' + $target + '"')
-  Log "relaunched via explorer"
-}} catch {{
-  Start-Process -FilePath $target -WorkingDirectory {json.dumps(str(target.parent))}
-  Log "relaunched via Start-Process fallback"
-}}
-Remove-Item -LiteralPath $source -Force -ErrorAction SilentlyContinue
-Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue
-"""
-        script_path.write_text(script, encoding="utf-8")
 
         QMessageBox.information(
             self,
             "準備安裝更新",
-            "程式將關閉，更新器會替換 exe 並重新啟動新版。",
+            "程式將關閉並開啟安裝精靈。依指示完成安裝後會自動啟動新版。",
         )
-        # 用乾淨環境啟動更新器（去掉 PyInstaller onefile 注入的 _PYI_*/_MEI* 變數，
-        # 避免它們被傳遞給重啟的新 exe）。
+        # 啟動 Inno Setup 安裝檔（每位使用者安裝、免 UAC），它會覆蓋舊版並重新啟動 App。
+        # 用乾淨環境啟動（去掉 PyInstaller 注入的 _PYI_*/_MEI* 變數），並完全脫離本程序，
+        # 確保關閉本程式後安裝檔仍持續執行。
         clean_env = {
             k: v for k, v in os.environ.items()
             if not (k.startswith("_PYI") or k.startswith("_MEI"))
         }
-        subprocess.Popen(
-            [
-                "powershell",
-                "-NoProfile",
-                "-ExecutionPolicy",
-                "Bypass",
-                "-File",
-                str(script_path),
-            ],
-            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-            env=clean_env,
-        )
+        try:
+            subprocess.Popen(
+                [str(installer_path)],
+                cwd=str(tmp_dir),
+                creationflags=(
+                    getattr(subprocess, "DETACHED_PROCESS", 0)
+                    | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+                ),
+                env=clean_env,
+                close_fds=True,
+            )
+        except Exception as exc:
+            QMessageBox.warning(self, "更新失敗", f"無法啟動安裝程式：{exc}")
+            return
         QApplication.quit()
 
     # ── 群組切換 ──────────────────────────────

@@ -8,6 +8,7 @@ env/
 
 build/
 dist/
+installer_output/
 *.spec.bak
 
 .pytest_cache/
