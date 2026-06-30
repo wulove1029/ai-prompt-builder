@@ -40,8 +40,12 @@ def _find_gstack_root() -> Path | None:
         Path.cwd() / ".agents" / "skills" / "gstack",
     ]
     for p in candidates:
-        if (p / "VERSION").is_file():
-            return p
+        try:
+            if (p / "VERSION").is_file():
+                return p
+        except OSError:
+            # 含未受信任 junction 的路徑（WinError 448）等，略過。
+            continue
     return None
 
 
@@ -59,7 +63,7 @@ def _read_gstack_version() -> str:
 
 GSTACK_VERSION = _read_gstack_version()
 
-APP_VERSION = "0.2.0"
+APP_VERSION = "0.2.1"
 UPDATE_REPO = os.environ.get("AI_PROMPT_BUILDER_UPDATE_REPO", "wulove1029/ai-prompt-builder")
 UPDATE_ASSET_NAME = "AI_Prompt_Builder_Setup.exe"
 
@@ -2801,7 +2805,10 @@ def _skill_dir_candidates(group: str) -> list[Path]:
 
     if group == "gstack":
         if GSTACK_ROOT is not None:
-            candidates.extend(child for child in GSTACK_ROOT.iterdir() if child.is_dir())
+            try:
+                candidates.extend(child for child in GSTACK_ROOT.iterdir() if child.is_dir())
+            except OSError:
+                pass
         for name in _GSTACK_KNOWN_SKILLS:
             candidates.extend([
                 home / ".codex" / "skills" / name,
@@ -2817,12 +2824,18 @@ def _skill_dir_candidates(group: str) -> list[Path]:
             ])
     elif group == "Ruflo":
         cache_root = home / ".codex" / "plugins" / "cache" / "ruflo"
-        if cache_root.is_dir():
-            candidates.extend(path.parent for path in cache_root.glob("ruflo-*/*/skills/*/SKILL.md"))
+        try:
+            if cache_root.is_dir():
+                candidates.extend(path.parent for path in cache_root.glob("ruflo-*/*/skills/*/SKILL.md"))
+        except OSError:
+            pass
     elif group == "Superpowers":
-        candidates.extend(path.parent for path in (
-            home / ".codex" / "plugins" / "cache" / "openai-curated" / "superpowers"
-        ).glob("*/skills/*/SKILL.md"))
+        try:
+            candidates.extend(path.parent for path in (
+                home / ".codex" / "plugins" / "cache" / "openai-curated" / "superpowers"
+            ).glob("*/skills/*/SKILL.md"))
+        except OSError:
+            pass
         for name in _SUPERPOWERS_KNOWN_SKILLS:
             candidates.extend([
                 home / ".codex" / "skills" / name,
@@ -2831,8 +2844,11 @@ def _skill_dir_candidates(group: str) -> list[Path]:
             ])
     elif group == "Understand-Anything":
         cache_root = home / ".codex" / "plugins" / "cache" / "understand-anything"
-        if cache_root.is_dir():
-            candidates.extend(path.parent for path in cache_root.glob("**/skills/*/SKILL.md"))
+        try:
+            if cache_root.is_dir():
+                candidates.extend(path.parent for path in cache_root.glob("**/skills/*/SKILL.md"))
+        except OSError:
+            pass
         for name in _UNDERSTAND_ANYTHING_KNOWN_SKILLS:
             candidates.extend([
                 home / ".codex" / "skills" / name,
@@ -2880,10 +2896,14 @@ def _discover_extra_skills(known: set[str]) -> dict[str, list[tuple[str, dict]]]
 
     for group in out:
         for child in sorted(_skill_dir_candidates(group)):
-            skill_md = child / "SKILL.md"
-            if not skill_md.is_file():
+            try:
+                skill_md = child / "SKILL.md"
+                if not skill_md.is_file():
+                    continue
+                parsed = _parse_skill_md(skill_md)
+            except OSError:
+                # 跳過無法走訪的路徑（例如 WinError 448：含未受信任的 junction/掛接點）。
                 continue
-            parsed = _parse_skill_md(skill_md)
             if parsed is None:
                 continue
             slash = _slash_for_discovered_skill(group, parsed["name"])
@@ -3529,7 +3549,11 @@ SKILLS["/ui-ux-pro-max typography"] = {
     ),
 }
 
-_extra_by_group = _discover_extra_skills(known=set(SKILLS.keys()))
+try:
+    _extra_by_group = _discover_extra_skills(known=set(SKILLS.keys()))
+except Exception:
+    # 技能自動探索只是錦上添花；任何意外都不該讓 App 開不起來。
+    _extra_by_group = {}
 for _group, _entries in _extra_by_group.items():
     if not _entries:
         continue
