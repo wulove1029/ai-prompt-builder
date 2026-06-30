@@ -6,6 +6,7 @@ AI Prompt Builder
 
 import sys
 import os
+import math
 import base64
 import json
 import re
@@ -19,8 +20,11 @@ from PyQt6.QtWidgets import (
     QGridLayout, QLabel, QComboBox, QLineEdit, QTextEdit, QPushButton, QSplitter,
     QGroupBox, QScrollArea, QFrame, QSizePolicy, QMessageBox
 )
-from PyQt6.QtCore import Qt, pyqtSignal, QThread
-from PyQt6.QtGui import QFont, QClipboard, QPalette, QColor, QIcon, QPixmap
+from PyQt6.QtCore import Qt, pyqtSignal, QThread, QSize, QPointF, QRectF
+from PyQt6.QtGui import (
+    QFont, QClipboard, QPalette, QColor, QIcon, QPixmap,
+    QPainter, QPen, QPainterPath,
+)
 
 # ─────────────────────────────────────────────
 # gstack 安裝位置偵測 + 版本讀取
@@ -53,7 +57,7 @@ def _read_gstack_version() -> str:
 
 GSTACK_VERSION = _read_gstack_version()
 
-APP_VERSION = "0.1.3"
+APP_VERSION = "0.1.4"
 UPDATE_REPO = os.environ.get("AI_PROMPT_BUILDER_UPDATE_REPO", "wulove1029/ai-prompt-builder")
 UPDATE_ASSET_NAME = "AI Prompt Builder.exe"
 
@@ -988,7 +992,7 @@ APP_ICON_B64 = (
 
 
 # ─────────────────────────────────────────────
-# 主題定義（Catppuccin Mocha 暴 / Catppuccin Latte 亮）
+# 主題定義（Catppuccin Mocha 暗 / Catppuccin Latte 亮）
 # ─────────────────────────────────────────────
 DARK_THEME = {
     "bg_main":       "#1e1e2e",
@@ -1006,8 +1010,8 @@ DARK_THEME = {
     "role_color":    "#89b4fa",
     "when_color":    "#a6e3a1",
     "desc_color":    "#bac2de",
-    "toggle_icon":   "☀️",
-    "toggle_tip":    "切換为亮色主題",
+    "toggle_kind":   "sun",
+    "toggle_tip":    "切換為亮色主題",
 }
 
 LIGHT_THEME = {
@@ -1026,9 +1030,60 @@ LIGHT_THEME = {
     "role_color":    "#1e66f5",
     "when_color":    "#40a02b",
     "desc_color":    "#5c5f77",
-    "toggle_icon":   "🌙",
+    "toggle_kind":   "moon",
     "toggle_tip":    "切換為暗色主題",
 }
+
+
+def _make_glyph_icon(kind: str, color: str, size: int = 18) -> QIcon:
+    """以向量方式繪製單色線條圖示（取代 emoji），維持專業且一致的外觀。"""
+    scale = 4
+    n = size * scale
+    pix = QPixmap(n, n)
+    pix.fill(Qt.GlobalColor.transparent)
+    p = QPainter(pix)
+    p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+    c = QColor(color)
+    pen = QPen(c)
+    pen.setWidthF(n * 0.085)
+    pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+    pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+    p.setPen(pen)
+
+    if kind == "sun":
+        cx = cy = n / 2
+        r = n * 0.20
+        p.setBrush(c)
+        p.drawEllipse(QPointF(cx, cy), r, r)
+        p.setBrush(Qt.BrushStyle.NoBrush)
+        for i in range(8):
+            a = math.pi * i / 4
+            p.drawLine(
+                QPointF(cx + math.cos(a) * r * 1.55, cy + math.sin(a) * r * 1.55),
+                QPointF(cx + math.cos(a) * r * 2.05, cy + math.sin(a) * r * 2.05),
+            )
+    elif kind == "moon":
+        outer = QPainterPath()
+        outer.addEllipse(QRectF(n * 0.22, n * 0.16, n * 0.60, n * 0.68))
+        cut = QPainterPath()
+        cut.addEllipse(QRectF(n * 0.40, n * 0.10, n * 0.60, n * 0.68))
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(c)
+        p.drawPath(outer.subtracted(cut))
+    elif kind == "clipboard":
+        p.setBrush(Qt.BrushStyle.NoBrush)
+        p.drawRoundedRect(QRectF(n * 0.26, n * 0.22, n * 0.48, n * 0.60), n * 0.07, n * 0.07)
+        p.setBrush(c)
+        p.drawRoundedRect(QRectF(n * 0.40, n * 0.14, n * 0.20, n * 0.12), n * 0.03, n * 0.03)
+        p.setBrush(Qt.BrushStyle.NoBrush)
+        for fy in (0.44, 0.56, 0.68):
+            p.drawLine(QPointF(n * 0.35, n * fy), QPointF(n * 0.65, n * fy))
+    elif kind == "check":
+        p.drawLine(QPointF(n * 0.26, n * 0.52), QPointF(n * 0.44, n * 0.70))
+        p.drawLine(QPointF(n * 0.44, n * 0.70), QPointF(n * 0.76, n * 0.30))
+
+    p.end()
+    return QIcon(pix)
 
 
 # ─────────────────────────────────────────────
@@ -1488,9 +1543,9 @@ SKILLS = {
             "- **重複邏輯**：相同的邏輯有沒有散落在多個地方？\n\n"
             "## 改善機會分類\n"
             "找出後，依影響力分類：\n"
-            "- 🔴 **高影響**：不改會持續拖慢開發速度的問題\n"
-            "- 🟡 **中影響**：改了會讓 codebase 更清楚，但不緊急\n"
-            "- 🔵 **低影響**：nice-to-have，有空再做\n\n"
+            "- **[高影響]**：不改會持續拖慢開發速度的問題\n"
+            "- **[中影響]**：改了會讓 codebase 更清楚，但不緊急\n"
+            "- **[低影響]**：nice-to-have，有空再做\n\n"
             "## 改善計畫\n"
             "- 每個改善項目拆成可獨立執行的步驟\n"
             "- 說明每一步的風險與驗證方式\n"
@@ -1786,6 +1841,55 @@ SKILLS = {
         ),
     },
     # ── 設計 ────────────────────────────
+    "── Matt Pocock 新技能 ──": None,
+    "/ask-matt": {
+        "role": "技能路由問答",
+        "desc": "當你不確定該用哪個 Matt Pocock 技能或流程時，依當前情境替你指路，把工作導向「想法到出貨」的主流程或對應的支線。",
+        "when": "面對一個任務卻記不清該從哪個技能或 flow 開始、需要有人替你判斷下一步時。",
+        "template": "專案：{project}　分支：{branch}\n\n任務描述：{task}\n\n{extra_instructions}## 角色\n你是 Matt Pocock 技能套件的路由顧問。使用者通常記不住每個技能，所以由你依當前情境，告訴他該走哪條流程、用哪個技能。\n\n## 路由地圖\n這套技能多數沿著一條主流程「想法到出貨」前進，另有兩條支線匯入主流程，其餘則為獨立技能。\n\n### 主流程：想法到出貨\n1. 用 /grill-with-docs 透過提問把想法磨利；它是有狀態的，會把學到的東西留在 CONTEXT.md 與 ADR。若手上沒有現成程式庫，改用 /grill-me。\n2. 分支判斷：是否每個問題都能在對話中解決？若某問題需要可執行的答案（狀態、商業邏輯、要親眼看到的 UI），就繞道做原型，兩個方向都用 /handoff 銜接，並以 /prototype 用拋棄式程式碼回答問題。\n3. 分支判斷：這是跨多個 session 的建置嗎？\n   - 是：/to-prd 把對話整理成 PRD，再用 /to-issues 拆成可獨立認領的 issue，之後每個 issue 開新 session、傳入 PRD 與單一 issue 給 /implement。\n   - 否：直接在同一個對話視窗用 /implement 動手。\n\n### 上下文衛生\n步驟 1 到 3 要保持在同一個不中斷的上下文視窗，直到 /to-issues 之後再清空，讓提問、PRD、issue 都建立在同一條思路上。注意 smart zone 約 120k token 的範圍；若在 /to-issues 前就接近上限，改用 /handoff 換新對話延續，不要在劣化狀態硬撐。\n\n### 兩條支線（匯入主流程）\n- 雜事與需求堆積：用 /triage 把外來的 bug 回報、功能請求等原始 issue 推過分流角色，產出可交給 /implement 的 issue。注意只分流「不是你自己建立的」issue，/to-issues 產出的 issue 已就緒，不要再分流。\n- 程式庫健康：/improve-codebase-architecture 在有空時維持程式庫對 agent 友善，挑一個深化機會即可長出一個想法，再帶回主流程的 /grill-with-docs。\n\n### 跨 session 工具\n- /handoff：把對話壓縮成 markdown 檔，開新 session 引用它來搬運上下文，是兩個視窗之間的橋；想要新對話又要保留現有內容時用它。\n- /compact（內建）：留在同一對話讓前面的回合被摘要，僅在階段之間的刻意斷點使用，不要在階段中途用。\n\n### 獨立技能\n- /grill-me：與 /grill-with-docs 相同的提問，但用於沒有程式庫、且不需保存狀態的情況。\n- /teach：用當前目錄當有狀態的工作區，跨多個 session 學一個概念。\n- /writing-great-skills：撰寫與編輯技能的參考。\n\n### 前置條件\n- /setup-matt-pocock-skills：第一次進入工程流程前先跑，設定 issue 追蹤器、分流標籤與文件結構。\n\n## 輸出\n先用一句話判斷使用者目前落在哪個情境，接著明確指出該走哪條流程、第一步該執行哪個技能，並說明理由與接下來會銜接到的下一個技能。若資訊不足以判斷，先反問澄清關鍵點再給路由建議。",
+    },
+    "/codebase-design": {
+        "role": "深模組設計",
+        "desc": "用「深模組」共通詞彙設計或改善模組介面，把大量行為藏在小介面後並安放於乾淨接縫，提升槓桿、在地性與可測試性。",
+        "when": "設計或重構模組介面、決定接縫該放哪、想讓程式更好測試或更易讓 AI 導覽時",
+        "template": "專案：{project}　分支：{branch}\n\n任務描述：{task}\n\n{extra_instructions}## 角色\n你是深模組設計顧問。請用「深模組」的共通詞彙設計或改善這段程式的模組介面：把大量行為藏在小介面後，安放在乾淨的接縫上，並讓它可透過該介面被測試。目標是給呼叫方槓桿、給維護者在地性、給所有人可測試性。\n\n## 詞彙約定\n請精確使用以下詞彙，不要替換成「component / service / API / boundary」：\n- 模組（Module）：任何有「介面」與「實作」的東西，刻意與規模無關（函式、類別、套件、跨層切片皆可）。\n- 介面（Interface）：呼叫方為了正確使用而必須知道的一切，不只型別簽章，還包含不變式、順序限制、錯誤模式、必要設定與效能特性。\n- 實作（Implementation）：模組內部的程式碼本體。\n- 深度（Depth）：介面上的槓桿，每學一單位介面能驅動多少行為。\n- 接縫（Seam，Michael Feathers）：不必在當地修改就能改變行為的地方，即介面所在的位置。\n- 轉接器（Adapter）：在接縫上滿足介面的具體實作，描述「角色」而非「內容」。\n- 槓桿（Leverage）：呼叫方因深度得到的回報，一份實作橫跨 N 個呼叫點與 M 個測試。\n- 在地性（Locality）：維護者因深度得到的回報，改動、bug、知識與驗證集中在一處，修一次就到處修好。\n\n## 設計原則\n1. 深模組等於「小介面加大量實作」；淺模組等於「大介面加薄薄實作」，要避免後者。\n2. 深度是介面的性質，不是實作的性質；深模組內部可以由可替換的小零件組成，只是那些零件不屬於介面。\n3. 刪除測試：想像刪掉這個模組。若複雜度隨之消失，它只是穿透層；若複雜度在 N 個呼叫方重新冒出，它就值得存在。\n4. 介面就是測試面：呼叫方與測試穿越同一條接縫；若想測「介面之後」的東西，通常代表模組形狀不對。\n5. 一個轉接器只是假想接縫，兩個轉接器才是真接縫；除非真的有東西在接縫兩側變化，否則別引入接縫。\n\n## 可測試性\n- 接收依賴，不要自己建立依賴（把 gateway 當參數傳入，而非在內部 new 出來）。\n- 回傳結果，不要產生副作用（計算折扣回傳值，而非直接改寫購物車）。\n- 縮小表面積：方法越少、參數越單純，測試設定越簡單。\n\n## 設計時要問\n- 能不能減少方法數量？\n- 能不能簡化參數？\n- 能不能把更多複雜度藏進實作裡？\n\n## 輸出格式\n1. 現況診斷：指出目前介面是深是淺，列出它的真實介面（含不變式、順序、錯誤模式、效能特性），標出嚴重度 [高]/[中]/[低]。\n2. 接縫建議：說明接縫該放哪、為何放這裡，以及是假想接縫還是真接縫。\n3. 重塑後介面：提出更深的介面草案，說明哪些複雜度被藏進實作。\n4. 可測試性對照：列出依賴注入、回傳取代副作用、縮小表面積的具體改法。\n5. 取捨說明：用「刪除測試」與槓桿、在地性論證為何這個形狀更好。",
+    },
+    "/domain-modeling": {
+        "role": "領域建模",
+        "desc": "主動建立並打磨專案的領域模型，釐清通用語言、挑戰模糊術語，並把術語表與架構決策即時寫下來",
+        "when": "想固定領域詞彙、建立統一語言，或要記錄重要架構決策時",
+        "template": "專案：{project}　分支：{branch}\n\n任務描述：{task}\n\n{extra_instructions}## 角色\n你是領域建模顧問。請主動建立並打磨這個專案的領域模型，而不是被動讀取既有詞彙。重點是在設計過程中挑戰術語、發明邊界情境、並在概念釐清的當下立即把術語表與決策寫下來。\n\n## 檔案結構約定\n- 多數專案只有單一情境：根目錄放 CONTEXT.md，架構決策放 docs/adr/ 底下（例如 0001-event-sourced-orders.md）。\n- 若根目錄存在 CONTEXT-MAP.md，代表是多情境專案；該地圖會指出每個情境放在哪（例如 src/ordering/CONTEXT.md、src/billing/CONTEXT.md），各自帶有專屬的 docs/adr/。\n- 採「延後建立」原則：有東西要寫才建檔。沒有 CONTEXT.md 時，等第一個術語被釐清才建立；沒有 docs/adr/ 時，等第一筆 ADR 需要時才建立。\n\n## 工作流程\n1. 對照術語表挑戰：當使用的術語與 CONTEXT.md 既有定義衝突，立刻指出。例如「你的詞彙表把『取消』定義成 X，但你現在指的像是 Y，到底是哪個？」\n2. 銳化模糊語言：遇到含糊或一詞多義的詞，提出精確的標準術語。例如「你說的『帳號』，是指 Customer 還是 User？這是兩個不同的東西。」\n3. 用具體情境壓力測試：討論領域關係時，發明能戳到邊界情況的具體劇本，逼出概念之間的界線。\n4. 與程式碼交叉比對：當使用者陳述某件事如何運作，檢查程式碼是否一致；發現矛盾就點出。例如「你的程式碼是整筆 Order 取消，但你剛說可以部分取消，哪個才對？」\n5. 即時更新 CONTEXT.md：術語一被釐清就當場寫入，不要累積成批。CONTEXT.md 只能是純粹的術語表，完全不含實作細節，不要當成規格書、草稿或實作決策的存放處。\n\n## ADR 取捨原則\n只有當以下三點全部成立時，才提議建立 ADR：\n1. 難以反悔：[高] 之後改變主意的成本很可觀。\n2. 缺乏背景會令人費解：未來的讀者會疑惑「當初為何這樣做？」\n3. 是真實取捨的結果：確實存在其他可行方案，而你基於具體理由選了這一個。\n只要三者缺一，就跳過 ADR。\n\n## 輸出\n- 列出本次釐清或新增的術語，每條附上標準名稱與精確定義，標明影響範圍（[高]/[中]/[低]）。\n- 列出發現的矛盾或模糊點，以及建議的釐清問題。\n- 若有需要，產出一筆 ADR 草稿，包含背景、決策、考慮過的替代方案與後果。\n- 明確指出哪些檔案需要新增或更新（CONTEXT.md、CONTEXT-MAP.md、docs/adr/ 內的檔案）。",
+    },
+    "/decision-mapping": {
+        "role": "決策地圖",
+        "desc": "把一個模糊的想法拆成有依賴順序的調查票券地圖，每次只推進並解決一張，逐步揭開迷霧直到計畫成形。",
+        "when": "想法太大、單一 session 無法收斂成計畫，需要分多次釐清開放決策時",
+        "template": "專案：{project}　分支：{branch}\n\n任務描述：{task}\n\n{extra_instructions}## 角色\n你是「決策地圖」規劃者。把一個還很模糊、單一 session 無法收斂的想法，轉成一份有依賴順序的調查票券地圖，並且每次只推進一張票券、逐步把規劃的「戰爭迷霧」往前推，直到通往終點的路徑清楚、沒有未解票券為止。\n\n## 核心產物：決策地圖\n- 一份精簡的 Markdown 檔案，每個規劃努力對應一份，與專案一起納入 git 版控。\n- 它是唯一正式產物：整份地圖會被當成 context 載入每個 session，所以務必保持精簡。\n- 票券過程中產生的資產（研究摘要、原型）只用連結指向，不要把內容複製進地圖。\n\n## 票券格式\n每張票券是一個獨立段落，以一個短的 dash-case slug 當作標題與唯一識別（例如 relational-db、auth-strategy、cache-layer），slug 本身要像迷你標題、夠精簡又在地圖內唯一。每張票券需包含：\n- 標題：以 slug 開頭，冒號後可接選填的中文標題\n- Blocked by：列出阻擋它的其他票券 slug（可多個）\n- Status：open、in-progress 或 resolved 三者之一\n- Type：Research、Prototype 或 Grilling\n- Question 區塊：要釐清的問題\n- Answer 區塊：解決後填入的結論\n\n當一張票券的 Blocked by 清單裡每一張都已 resolved，它才算「解鎖」。session 要先把該票券設成 in-progress 並存檔，才開始動工，讓平行的其他 session 自動跳過它。每張票券的大小要能在一個約 100K token 的 agent session 內完成。\n\n## 三種票券型別\n- Research：閱讀文件、第三方 API 或本地知識庫。產出一份 Markdown 摘要當資產。當需要工作目錄以外的知識時用它。\n- Prototype：寫 UI 或邏輯程式碼來驗證假設或探索設計空間，使用 /prototype 技能，產出一個原型當資產。當關鍵問題是「看起來該如何」或「行為該如何」時用它。\n- Grilling：與 agent 對話釐清，使用 /grilling 與 /domain-modeling 技能，一次只問一個問題。這是預設型別。\n\n## 兩種模式\n不論哪一種，每個 session 都只解決最多一張票券，並以 Handoff 結尾。\n\n### 一、建立地圖（使用者帶著模糊想法）\n1. 先跑一輪 /grilling 與 /domain-modeling，一次問一個問題，把開放決策攤開。\n2. 寫出新的決策地圖：大部分留白（迷霧），標出前線，能當下直接拍板的票券就地填上 resolved。\n3. 進入 Handoff。建地圖本身就是一整個 session 的工作，不要順手再去解票券。\n\n### 二、推進地圖（使用者帶著現有地圖路徑）\n使用者可選擇性指定票券 slug；若沒指定，由你挑下一張。\n1. 把整份地圖載入為 context。\n2. 選票券：使用者有指定就用那張；否則挑文件順序中第一張 open 且已解鎖的票券。先設成 in-progress 並存檔以宣告認領。\n3. 解決它，視需要呼叫對應技能；不確定時就用 /grilling 與 /domain-modeling。\n4. 把結論寫進該票券的 Answer 並把 Status 設為 resolved。\n5. 加入新發現的票券並標上正確的 Blocked by；若這次決策讓地圖其他部分失效，就更新或刪除那些節點。\n6. 進入 Handoff。\n\n注意：使用者可能平行跑多張已解鎖票券，預期會有其他 agent 同時在編輯地圖。\n\n## 輸出格式（Handoff）\n每個 session 結尾都要清空 context、開新 session，並附上使用者可直接複製貼上的「下一步」區塊，分兩種情況：\n\n仍有 open 票券時：列出目前已解鎖的票券，再給兩種可複製選項——一條讓單一 session 自動挑下一張的指令，以及每張已解鎖票券各一條釘住該票券的指令，供平行視窗各貼一行。範例語氣：\n\n下一步：目前有 N 張票券解鎖，分別是 auth-strategy、cache-layer。清空 context 後開新 session。\n單一 session（解下一張未解鎖票券）：請以位於 路徑 的地圖呼叫 /decision-mapping。\n平行（每個視窗貼一行）：請以位於 路徑 的地圖、票券 auth-strategy 呼叫 /decision-mapping；票券 cache-layer 同理另起一行。\n\n沒有 open 票券時：迷霧已推開到通往終點的路徑清楚，地圖完成（初次 grilling 也可能根本沒有迷霧，那就沒有地圖要建）。建議直接進入實作，或用 /to-prd 安排多 session 的實作流程。",
+    },
+    "/implement": {
+        "role": "PRD 實作執行",
+        "desc": "依 PRD 或 issue 清單實作工作，在約定的接縫採 TDD，定期型別檢查與測試，最後審查並提交。",
+        "when": "已有 PRD 或 issue 想落地成程式碼、要按既定計畫穩定執行實作時",
+        "template": "專案：{project}　分支：{branch}\n\n任務描述：{task}\n\n{extra_instructions}## 角色\n你負責把 PRD 或 issue 清單描述的工作實際做出來，過程穩健、可驗證、可審查。\n\n## 實作流程\n1. 先讀懂 PRD 或 issue 想達成的目標與驗收條件，確認範圍。\n2. 在事先約定好的接縫處盡量採用 TDD：先寫測試、再寫實作。\n3. 過程中定期執行型別檢查，並針對單一測試檔頻繁跑測試，及早抓錯。\n4. 完成後再跑一次完整測試套件，確認整體沒有破壞。\n\n## 紀律要求\n- 只做被要求的工作，不多也不少，不擅自擴張範圍。\n- 不確定設計或邊界時先停下來問，不要硬猜。\n- 每個改動都要能對應回 PRD 或 issue 的某項需求。\n\n## 收尾\n1. 用程式碼審查流程檢視這次實作的品質與潛在問題。\n2. 將工作提交到目前分支。\n\n## 輸出格式\n條列已完成的需求項目、對應的測試與型別檢查結果、完整測試套件是否通過，並標明殘留風險與嚴重度（[高]/[中]/[低]）。",
+    },
+    "/loop-me": {
+        "role": "工作流程拷問",
+        "desc": "用一次一問、附建議答案的拷問式對話，把你想自動化的「迴圈」逼成可直接交付實作的工作流程規格",
+        "when": "想把重複性事務（每天、每週、每次某活動）變成可委派的工作流程，並要寫出沒有疑問就能開工的規格時",
+        "template": "專案：{project}　分支：{branch}\n\n任務描述：{task}\n\n{extra_instructions}## 角色\n你是工作流程設計的拷問者。發動一場有狀態的拷問對話，唯一產物是「工作流程規格」。\n\n## 拷問紀律\n- 一次只問一個問題，每個問題都附上你建議的答案。\n- 相關時才動用詞彙，絕不當成檢查清單逐項勾選。\n- 不強加任何結構：除非拷問證明需要，工作流程可以沒有 AI、沒有檢查點、沒有排程。\n\n## 迴圈視角\n- 迴圈是使用者生活中反覆出現的模式：職涯、一週、一個早晨、單一重複活動。把人生看成迴圈中的迴圈，會顯露這些活動有多可預測，這正是值得委派的理由。\n- 用這個視角找出值得規格化的迴圈，並主動提出使用者尚未注意到的迴圈。\n- 工作流程是某個迴圈被落實後的規格。你在迴圈上執行工作流程，迴圈是它的執行實例。\n\n## 詞彙\n- 觸發（Trigger）：每次執行由什麼點燃，可以是事件（新郵件、新議題）或排程（每天早上）。事件觸發通常更有效率。\n- 檢查點（Checkpoint）：人在迴圈中被要求驗證或決定的點。有些工作流程沒有檢查點、可全自動執行，有些完全不用 AI。\n- 右推（Push right）：把檢查點盡量往後延，在牽涉到人之前先把工作做到極致，讓使用者只被問一次、問得晚、且一切都已備妥。\n- 簡報（Brief）：檢查點所呈現的內容，是一份精煉、可直接決策的摘要，說明產出了什麼、為什麼，並提供往下連到資產本身的連結，絕不丟原始輸出。使用者讀的是簡報而非草稿，審閱速度至關重要。\n\n## 工作區\n- 「workflows」資料夾下每個工作流程一份規格檔。\n- 「NOTES.md」記錄使用者世界的原始筆記：他們用的工具、處理的管道、以及他們自己對這些事物的稱呼。當它空白或單薄時，先訪談他們的世界再開始規格化；把模糊的詞收斂成標準用語並記錄於此。\n- 隨拷問釐清進度，建立、編輯與刪除規格。\n\n## 完成定義\n一份工作流程規格完成的標準是：實作者代理人不必再問任何一個問題就能把它建出來。在此之前持續拷問，只要還有一個問題未解，就尚未完成。\n\n## 輸出\n產出或更新「workflows」資料夾下的工作流程規格檔，內含觸發方式、檢查點（或說明為何無需）、右推策略與簡報內容；必要時同步更新「NOTES.md」的世界筆記。",
+    },
+    "/wizard": {
+        "role": "互動精靈產生器",
+        "desc": "產生一支互動式 bash 精靈腳本，一步步帶人完成手動程序，開啟網址、擷取數值、寫入 .env 與 GitHub Secrets，並在每步確認進度。",
+        "when": "需要把第三方設定、一次性遷移或 A 到 B 狀態轉換包成可重複執行的引導腳本時",
+        "template": "專案：{project}　分支：{branch}\n\n任務描述：{task}\n\n{extra_instructions}## 角色\n你是「互動精靈」作者。精靈是一支 bash 腳本，逐步帶人完成手動又繁瑣、每次都要重新對 AI 解釋的程序：自動開啟每個網址、明確指示要點什麼、複製什麼，擷取數值後寫入該去的位置（.env、GitHub Secrets），每階段都先確認並顯示剩餘進度。\n\n## 重要原則\n- 精靈的 UX 已由 template.sh 解決：進度與剩餘時間、確認關卡、跨平台開網址（含 WSL）、隱藏式機密輸入、冪等的 .env 覆寫、gh secret 與 gh variable 寫入、結尾摘要。\n- 標記列以上的函式庫每支精靈都相同，這份一致性就是重點，絕不可手改。你的工作只有界定程序與撰寫各階段。\n- 精靈預設是一次性的，存到暫存或 scripts 路徑、用完即刪；只有使用者要可重複的設定路徑時才提交進 repo。\n\n## 步驟一：界定程序\n先讀 repo，別冷問。設定類請看 .env、.env.example、README、docker-compose、框架設定、以及 .github/workflows 內每個 secrets 與 vars 的引用，那都是精靈必須產生的數值；遷移或轉換類請釐清目前狀態、目標狀態、以及中間不可逆的動作。接著把排序好的階段清單與各階段產生的數值列給使用者確認，他們可增減或重排。\n完成標準：每個階段都已依序命名，且每個擷取的數值你都知道（一）人從哪裡取得（二）寫到哪裡（.env、GitHub Secret、兩者或都不寫，有些階段是純動作）（三）是否為機密需隱藏輸入。\n\n## 步驟二：描繪各階段路徑\n為每個階段寫出人要走的精確路徑：開哪個網址、在那裡做什麼、數值顯示在哪、填入哪個變數。範例：儀表板 到 開發者 到 API 金鑰 到 顯示測試金鑰 到 複製。凡是你不確定目前介面或確切指令的地方，就明說並詢問使用者或查文件，絕不杜撰可能不存在的步驟。\n完成標準：每個階段都能對應到陌生人也能照做的具體指示。\n\n## 步驟三：撰寫精靈\n把 template.sh 複製到目標路徑，依相依順序把範例階段換成每步一個 stage。使用函式庫提供的輔助函式：stage、say 或 step、open_url、ask 或 ask_secret、write_env、set_secret 或 set_var、pause 或 confirm，並把 TOTAL_STAGES 與 TOTAL_MINUTES 設成誠實的估計值以驅動剩餘時間顯示。守住模板的標準：先開網址再問該網址的值、機密一律用 ask_secret、每個要保存的值都 write_env、只有 CI 真正需要的值才 set_secret、任何不可逆動作前都 confirm。每個 stage 都會清空畫面只留當前步驟，所以一個 stage 只放一件聚焦的事，避免人需要的資訊被捲走。標記列以上的函式庫絕不可動。\n\n## 步驟四：驗證與交付\n先跑 bash -n 檢查語法，有 shellcheck 就跑；接著 chmod +x。別自己端到端執行，它會開瀏覽器並卡在人為輸入；改用靜態追蹤：步驟一的每個值都有被擷取、且落在步驟一說的位置，每個 set_secret 名稱都與 CI 裡的 secrets 引用完全相符。最後告訴使用者怎麼執行；若是可重複的設定路徑就提交並從 README 連結，讓下一個人直接跑腳本而非再問 AI。\n\n## 輸出\n交付可執行的精靈腳本及其儲存路徑，附上階段對照表（階段 到 擷取數值 到 寫入位置），以及一行執行指示。",
+    },
+    "/resolving-merge-conflicts": {
+        "role": "合併衝突解決",
+        "desc": "引導你解決進行中的 git merge/rebase 衝突，理解雙方意圖後逐段收斂並完成合併。",
+        "when": "merge 或 rebase 卡在衝突、需要逐段判斷保留哪一方改動時",
+        "template": "專案：{project}　分支：{branch}\n\n任務描述：{task}\n\n{extra_instructions}## 角色\n你是合併衝突解決專家，負責處理進行中的 git merge 或 rebase 衝突。原則：永遠把衝突解決完，絕不使用 --abort。\n\n## 步驟\n1. **掌握現況**：查看 merge/rebase 的當前狀態，檢視 git 歷史與所有衝突檔案，釐清是哪一種合併、卡在哪個階段。\n2. **追本溯源**：為每個衝突找出雙方改動的原始來源，深入理解每項變更為何而做、原始意圖是什麼。閱讀 commit 訊息、對應的 PR、原始 issue 或工單。\n3. **逐段收斂**：一段一段解決衝突。能同時保留雙方意圖就保留；若彼此不相容，選擇符合本次合併既定目標的那一方，並註記取捨。不要憑空發明新行為，務必解完，絕不 --abort。\n4. **跑自動檢查**：找出專案的自動化檢查並執行，通常依序為型別檢查、測試、格式化。修好任何被合併破壞的地方。\n5. **完成合併**：暫存所有變更並提交；若是 rebase，持續 continue 直到所有 commit 都完成 rebase。\n\n## 輸出格式\n- 衝突清單：每個檔案與 hunk 的雙方意圖摘要、最終採用方案、取捨說明。\n- 自動檢查結果：型別／測試／格式化各自通過或修正紀錄。\n- 合併狀態：已暫存、已提交、rebase 是否全部完成。",
+    },
     "── 設計 ──": None,
     "/design-consultation": {
         "role": "設計夥伴",
@@ -1902,9 +2006,9 @@ SKILLS = {
             "先截圖目前的頁面，包含：桌機版、手機版（375px）、有錯誤狀態的版本\n\n"
             "**Step 2 — 找問題（分類列出）**\n"
             "用以下分類整理所有視覺問題：\n"
-            "- 🔴 **嚴重**：影響可用性或可讀性（文字截斷、對比不足、按鈕點不到）\n"
-            "- 🟡 **明顯**：用戶會注意到但不影響使用（對齊不一致、間距亂、顏色混用）\n"
-            "- 🔵 **精修**：設計師才會注意到（字重選擇、letter-spacing、陰影過度）\n\n"
+            "- **[嚴重]**：影響可用性或可讀性（文字截斷、對比不足、按鈕點不到）\n"
+            "- **[明顯]**：用戶會注意到但不影響使用（對齊不一致、間距亂、顏色混用）\n"
+            "- **[精修]**：設計師才會注意到（字重選擇、letter-spacing、陰影過度）\n\n"
             "若有 DESIGN.md，對照 token 找偏差；若沒有，用通用設計原則判斷。\n\n"
             "**Step 3 — 修復（atomic commits）**\n"
             "- 每個問題獨立修復，每個 fix 一個 commit\n"
@@ -1957,10 +2061,10 @@ SKILLS = {
             "- 是否有「看起來完成但實際不能端到端使用」的洞？\n\n"
             "## 輸出格式\n"
             "每個發現標明：\n"
-            "- 🔴 **Critical**：必須修，否則不能上線\n"
-            "- 🟡 **High**：強烈建議修，有明確風險\n"
-            "- 🔵 **Medium**：建議改善，不緊急\n"
-            "- ⚪ **Low / Nit**：可選，風格或可讀性問題\n\n"
+            "- **[Critical]**：必須修，否則不能上線\n"
+            "- **[High]**：強烈建議修，有明確風險\n"
+            "- **[Medium]**：建議改善，不緊急\n"
+            "- **[Low / Nit]**：可選，風格或可讀性問題\n\n"
             "格式：`[嚴重度] 檔案:行號 — 問題說明 → 建議修法`\n\n"
             "明顯的 Critical / High 問題請直接修復並說明原因，不只是標記。\n\n"
             "## 最後\n"
@@ -2192,7 +2296,7 @@ SKILLS = {
             "列出執行了哪些測試，結果是通過 / 失敗 / 未測試\n\n"
             "**Bug 清單**\n"
             "每個 bug 包含：\n"
-            "- 嚴重度：🔴 Critical / 🟡 High / 🔵 Medium / ⚪ Low\n"
+            "- 嚴重度：[Critical] / [High] / [Medium] / [Low]\n"
             "- 重現步驟（具體、可重複）\n"
             "- 預期行為 vs 實際行為\n"
             "- 截圖或 log（若有）\n\n"
@@ -3019,7 +3123,7 @@ SKILLS = {
             "5. **一致性**：是否符合此專案的既有風格與慣例\n\n"
             "## 輸出格式\n"
             "每個發現請標明：\n"
-            "- 嚴重度：🔴 blocking（必須修）/ 🟡 warning（建議修）/ 🔵 nit（可選）\n"
+            "- 嚴重度：[blocking]（必須修）/ [warning]（建議修）/ [nit]（可選）\n"
             "- 檔案與行號\n"
             "- 問題說明（一句話）\n"
             "- 具體修改建議（附程式碼片段）\n\n"
@@ -3159,7 +3263,7 @@ SKILLS = {
             "  ruflo memory list           # 記憶體有多少條目？最近一次存取是什麼時候？\n\n"
             "## 診斷標準\n"
             "請針對每個服務回答：\n"
-            "- 狀態：✅ 正常 / ⚠️ 警告 / ❌ 異常\n"
+            "- 狀態：[正常] / [警告] / [異常]\n"
             "- 說明：觀察到什麼\n"
             "- 行動：如果有問題，具體的修復指令是什麼\n\n"
             "## 完成後\n"
@@ -4340,8 +4444,10 @@ class GStackPromptBuilder(QMainWindow):
                 f"font-size: 11px; color: {t['accent_teal']}; margin-left: 8px; margin-top: 3px;"
             )
         if hasattr(self, "_theme_btn"):
-            self._theme_btn.setText(t["toggle_icon"])
+            self._theme_btn.setIcon(_make_glyph_icon(t["toggle_kind"], t["text_sub"]))
             self._theme_btn.setToolTip(t["toggle_tip"])
+        if hasattr(self, "copy_btn"):
+            self.copy_btn.setIcon(_make_glyph_icon("clipboard", t["on_accent"]))
         if hasattr(self, "_info_widget"):
             self._info_widget.setStyleSheet(
                 f"background-color: {t['bg_surface2']}; border-radius: 6px; padding: 8px;"
@@ -4434,8 +4540,10 @@ class GStackPromptBuilder(QMainWindow):
         right_layout.addWidget(update_btn)
 
         # 主題切換按鈕
-        theme_btn = QPushButton(self._theme["toggle_icon"])
+        theme_btn = QPushButton()
         theme_btn.setObjectName("theme_btn")
+        theme_btn.setIcon(_make_glyph_icon(self._theme["toggle_kind"], self._theme["text_sub"]))
+        theme_btn.setIconSize(QSize(18, 18))
         theme_btn.setToolTip(self._theme["toggle_tip"])
         theme_btn.setFixedSize(40, 32)
         theme_btn.clicked.connect(self._toggle_theme)
@@ -4697,8 +4805,10 @@ class GStackPromptBuilder(QMainWindow):
         copy_layout = QHBoxLayout()
         copy_layout.addStretch()
 
-        self.copy_btn = QPushButton("📋  複製到剪貼板")
+        self.copy_btn = QPushButton("複製到剪貼板")
         self.copy_btn.setObjectName("copy_btn")
+        self.copy_btn.setIcon(_make_glyph_icon("clipboard", self._theme["on_accent"]))
+        self.copy_btn.setIconSize(QSize(16, 16))
         self.copy_btn.setMinimumWidth(200)
         self.copy_btn.clicked.connect(self._copy_to_clipboard)
         copy_layout.addWidget(self.copy_btn)
@@ -4714,7 +4824,7 @@ class GStackPromptBuilder(QMainWindow):
     def _on_gstack_update_available(self, remote_ver: str):
         """gstack 有新版本時，在標題列顯示提示。不更改本程式版本號。"""
         t = self._theme
-        self._update_label.setText(f"⬆ gstack 有新版本 v{remote_ver} 可用")
+        self._update_label.setText(f"gstack 有新版本 v{remote_ver} 可用")
         self._update_label.setStyleSheet(
             f"font-size: 11px; color: {t['accent_teal']}; margin-left: 8px; margin-top: 3px;"
         )
@@ -5044,7 +5154,7 @@ Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue
             return
         self.role_label.setText(f"角色：{skill_data['role']}")
         self.desc_label.setText(skill_data["desc"])
-        self.when_label.setText(f"✓ {skill_data['when']}")
+        self.when_label.setText(skill_data['when'])
 
         # 切換 skill 專屬欄位的 label / placeholder / 可見性
         spec = self._SKILL_SPECIFIC_FIELDS.get(skill_name)
@@ -5141,7 +5251,7 @@ Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue
 
         # 短暫顯示複製成功
         original_text = self.copy_btn.text()
-        self.copy_btn.setText("✅  已複製！")
+        self.copy_btn.setText("已複製！")
         self.copy_btn.setStyleSheet(
             "background-color: #a6e3a1; color: #1e1e2e; "
             "border-radius: 8px; padding: 12px 32px; "
