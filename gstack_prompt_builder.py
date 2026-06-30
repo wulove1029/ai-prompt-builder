@@ -58,7 +58,7 @@ def _read_gstack_version() -> str:
 
 GSTACK_VERSION = _read_gstack_version()
 
-APP_VERSION = "0.1.6"
+APP_VERSION = "0.1.7"
 UPDATE_REPO = os.environ.get("AI_PROMPT_BUILDER_UPDATE_REPO", "wulove1029/ai-prompt-builder")
 UPDATE_ASSET_NAME = "AI Prompt Builder.exe"
 
@@ -4393,7 +4393,7 @@ class GStackPromptBuilder(QMainWindow):
                 return
 
         script_path = tmp_dir / "install-ai-prompt-builder-update.ps1"
-        relaunch = str(target)
+        log_path = tmp_dir / "update.log"
         backup = str(target.with_suffix(target.suffix + ".bak"))
         script = f"""
 $ErrorActionPreference = 'Stop'
@@ -4402,34 +4402,37 @@ $source = {json.dumps(str(download_path))}
 $target = {json.dumps(str(target))}
 $backup = {json.dumps(backup)}
 $expectedSize = {int(actual_size)}
+$log = {json.dumps(str(log_path))}
+
+function Log($m) {{ try {{ "$(Get-Date -Format o)  $m" | Out-File -LiteralPath $log -Append -Encoding utf8 }} catch {{}} }}
+
+# 清掉從舊程式繼承來的 PyInstaller onefile 環境變數。否則重啟的新 exe 會以為自己是
+# 舊程式的子階段，去找已被刪除的舊解壓目錄 -> 報「Failed to load Python DLL」。
+Get-ChildItem Env: | Where-Object {{ $_.Name -like '_PYI_*' -or $_.Name -like '_MEI*' }} | ForEach-Object {{ Remove-Item "Env:\\$($_.Name)" -ErrorAction SilentlyContinue }}
+Log "start pid=$pidToWait target=$target expected=$expectedSize"
 
 function Test-Unlocked($path) {{
   if (-not (Test-Path -LiteralPath $path)) {{ return $true }}
-  try {{
-    $fs = [System.IO.File]::Open($path, 'Open', 'ReadWrite', 'None')
-    $fs.Close(); return $true
-  }} catch {{ return $false }}
+  try {{ $fs = [System.IO.File]::Open($path, 'Open', 'ReadWrite', 'None'); $fs.Close(); return $true }} catch {{ return $false }}
 }}
 
 # 1) 等舊程序結束
 try {{ Wait-Process -Id $pidToWait -Timeout 60 }} catch {{ Start-Sleep -Seconds 3 }}
+Log "old process gone"
 
 # 2) 等 exe 檔案完全解鎖（onefile 啟動器母程序可能仍鎖著檔），最多等 90 秒。
-#    這是避免「就地替換時檔案還被鎖 -> 換上半個檔 -> 啟動失敗」的關鍵。
 $deadline = (Get-Date).AddSeconds(90)
-while (-not (Test-Unlocked $target) -and (Get-Date) -lt $deadline) {{
-  Start-Sleep -Milliseconds 400
-}}
+while (-not (Test-Unlocked $target) -and (Get-Date) -lt $deadline) {{ Start-Sleep -Milliseconds 400 }}
+Log "target unlocked"
 
 # 3) 來源完整性再確認（大小要等於下載驗證過的大小）
 $sourceSize = (Get-Item -LiteralPath $source).Length
-if ($sourceSize -ne $expectedSize -or $sourceSize -lt 1048576) {{
-  throw "Source size mismatch: $sourceSize vs $expectedSize"
-}}
+if ($sourceSize -ne $expectedSize -or $sourceSize -lt 1048576) {{ Log "ABORT source $sourceSize vs $expectedSize"; throw "Source size mismatch" }}
 
 # 4) 備份舊版
 if (Test-Path -LiteralPath $backup) {{ Remove-Item -LiteralPath $backup -Force -ErrorAction SilentlyContinue }}
 if (Test-Path -LiteralPath $target) {{ Copy-Item -LiteralPath $target -Destination $backup -Force }}
+Log "backed up"
 
 # 5) 替換（重試，且每次都驗證大小一致才算成功）
 $copied = $false
@@ -4444,12 +4447,20 @@ for ($i = 0; $i -lt 40; $i++) {{
 # 6) 失敗則還原舊版，絕不留壞檔
 if (-not $copied) {{
   if (Test-Path -LiteralPath $backup) {{ Copy-Item -LiteralPath $backup -Destination $target -Force }}
+  Log "ABORT could not replace; restored backup"
   throw "Could not replace application executable"
 }}
+Log "swapped ok"
 
-# 7) 啟動新版並清理
+# 7) 用系統 shell（explorer）啟動新版 = 等同使用者雙擊，環境乾淨，避免 onefile 載入器混淆。
 Start-Sleep -Seconds 1
-Start-Process -FilePath {json.dumps(relaunch)} -WorkingDirectory {json.dumps(str(target.parent))}
+try {{
+  Start-Process -FilePath "explorer.exe" -ArgumentList ('"' + $target + '"')
+  Log "relaunched via explorer"
+}} catch {{
+  Start-Process -FilePath $target -WorkingDirectory {json.dumps(str(target.parent))}
+  Log "relaunched via Start-Process fallback"
+}}
 Remove-Item -LiteralPath $source -Force -ErrorAction SilentlyContinue
 Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue
 """
@@ -4460,6 +4471,12 @@ Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue
             "準備安裝更新",
             "程式將關閉，更新器會替換 exe 並重新啟動新版。",
         )
+        # 用乾淨環境啟動更新器（去掉 PyInstaller onefile 注入的 _PYI_*/_MEI* 變數，
+        # 避免它們被傳遞給重啟的新 exe）。
+        clean_env = {
+            k: v for k, v in os.environ.items()
+            if not (k.startswith("_PYI") or k.startswith("_MEI"))
+        }
         subprocess.Popen(
             [
                 "powershell",
@@ -4470,6 +4487,7 @@ Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue
                 str(script_path),
             ],
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            env=clean_env,
         )
         QApplication.quit()
 
